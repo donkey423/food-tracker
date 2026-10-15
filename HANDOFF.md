@@ -24,3 +24,8 @@ python3 tests/e2e_retry.py
 2. Vercel 連 repo（Framework: Other，無 build command，Output 為根目錄），之後 push 自動部署
 3. iPhone Safari 開部署網址 →「加入主畫面」→ 設定填 Gemini API Key
 4. 拍一張營養標示，驗證真實 Gemini 呼叫（CORS、模型名稱）；結果回填 STATUS.md
+
+## 資料格式更新（v0.7）
+- localStorage `nl.v1` 新增 `weights: [{date:'YYYY-MM-DD', kg}]`（每日一筆）；`profile.tdeeOverride`（可選，採用實測消耗時存在）。
+- 匯出 JSON version 3 含 weights；匯入依日期合併、不覆蓋既有。
+- 驗證：`node --test tests/*.mjs`；`python3 tests/e2e.py`、`e2e_retry.py`、`e2e_new.py`。

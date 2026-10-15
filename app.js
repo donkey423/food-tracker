@@ -22,19 +22,19 @@ const ICON = {
 let db = load();
 let curDate = C.localDateStr(new Date());
 let curMeal = C.defaultMeal(new Date());
-let editing = null;
+let editing = null; // {source, meta, portions, editId?}
 let quickFoods = [];
 let lastPhoto = '';
 let range = 7;
 const noThinking = new Set();
 
 function load() {
-  const base = { entries: [], favorites: [], profile: { activity: 'light', rate: 0.5 }, settings: { apiKey: '', model: '', speed: 'balanced', lastBackup: '' } };
+  const base = { entries: [], weights: [], favorites: [], profile: { activity: 'light', rate: 0.5 }, settings: { apiKey: '', model: '', speed: 'balanced', lastBackup: '' } };
   try {
     const d = JSON.parse(localStorage.getItem(LS) || '{}');
     const settings = { ...base.settings, ...(d.settings || {}) };
     if (settings.model === 'gemini-flash-latest') settings.model = ''; // 舊版預設值改為自動
-    return { entries: d.entries || [], favorites: d.favorites || [], profile: { ...base.profile, ...(d.profile || {}) }, settings };
+    return { entries: d.entries || [], weights: d.weights || [], favorites: d.favorites || [], profile: { ...base.profile, ...(d.profile || {}) }, settings };
   } catch {
     return base;
   }
@@ -135,6 +135,7 @@ function renderToday() {
   $('#summary').innerHTML = `${hero}<div style="height:16px"></div><div class="macros">
     ${macroRow('p', '蛋白質', t.protein, mt?.protein, 'g', mt ? [mt.protein, mt.proteinMax] : undefined)}${macroRow('c', '碳水', t.carbs, mt?.carbs, 'g', mt ? [mt.carbsMin, mt.carbsMax] : undefined)}${macroRow('f', '脂肪', t.fat, mt?.fat, 'g', mt ? [mt.fatMin, mt.fatMax] : undefined)}${extra}</div>${minor}`;
   $('#remain').innerHTML = remainCard(t, mt);
+  renderWeightCard();
 
   $('#entries').innerHTML = list.length
     ? C.MEALS.map((meal) => {
@@ -146,11 +147,27 @@ function renderToday() {
   const last = db.settings.lastBackup;
   $('#backupHint').hidden = !(db.entries.length >= 10 && (!last || (Date.now() - new Date(last)) / 864e5 > 7));
 }
+function renderWeightCard() {
+  const tr = C.weightTrend(db.weights);
+  const cur = db.weights.find((w) => w.date === curDate);
+  const last = tr[tr.length - 1];
+  const info = last ? `最近 ${last.kg} kg（${last.date.slice(5).replace('-', '/')}）・近 7 天平均 <b>${last.avg}</b> kg` : '每天早上起床空腹量一次，系統會用趨勢校正你的真實消耗。';
+  $('#weightCard').innerHTML = `<h2>體重 <small>${dateText(curDate).main}</small></h2><div class="card"><div class="wrow"><input type="number" inputmode="decimal" step="0.1" id="wInput" placeholder="kg" value="${cur ? cur.kg : ''}" aria-label="體重"><button class="btn primary" id="wSave">${cur ? '更新' : '記錄'}</button></div><p class="explain" style="margin:8px 0 0">${info}</p></div>`;
+}
+function logWeight(kg) {
+  const before = db.weights.length;
+  db.weights = C.upsertWeight(db.weights, curDate, kg);
+  if (!db.weights.some((w) => w.date === curDate)) return toast('體重數值不合理（20–300 kg）');
+  const tr = C.weightTrend(db.weights);
+  db.profile.weight = tr[tr.length - 1].avg; // 公式用近 7 天平均，避免單日水分波動
+  save(); renderToday();
+  toast(db.weights.length > before ? '已記錄體重' : '已更新體重');
+}
 function entryRow(e) {
   const fav = db.favorites.includes(e.name);
   const n = e.nutrients;
   const est = e.confidence && e.confidence !== 'high' ? `<span class="tag">估算</span>` : '';
-  return `<div class="item"><div class="grow"><b>${esc(e.name)}${est}</b>
+  return `<div class="item"><div class="grow" data-edit="${e.id}" role="button"><b>${esc(e.name)}${est}</b>
     <small>${fmt(e.servings)} 份・蛋白 ${fmt(n.protein)}g・碳水 ${fmt(n.carbs)}g・脂肪 ${fmt(n.fat)}g</small></div>
     <span class="kcal">${int(n.kcal)}</span>
     <button class="icon-btn ${fav ? 'on' : ''}" data-fav="${esc(e.name)}" aria-label="${fav ? '取消常用' : '設為常用'}">${fav ? ICON.star : ICON.starO}</button>
@@ -164,10 +181,36 @@ function renderAdd() {
   $('#addDate').textContent = dateText(curDate).main;
   if (!editing) $('#editor').innerHTML = '';
   $('#capture').hidden = !!editing;
+  renderQuickActions();
+  $('#lower').hidden = !!editing;
   quickFoods = C.foodLibrary(db.entries, db.favorites).slice(0, 40);
   $('#quick').innerHTML = quickFoods.length
     ? quickFoods.map((f, i) => `<button class="qitem" data-q="${i}"><span class="grow">${f.fav ? '★ ' : ''}${esc(f.name)}</span><small>${int(f.perServing?.kcal || 0)} kcal</small><span class="plus">+</span></button>`).join('')
     : '<div class="empty">存過的食物會出現在這裡，下次一鍵加入</div>';
+}
+function renderQuickActions() {
+  const y = C.addDays(curDate, -1);
+  const yMeal = db.entries.filter((e) => e.date === y && e.meal === curMeal);
+  const yAll = db.entries.filter((e) => e.date === y);
+  const last = [...db.entries].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0];
+  const bs = [];
+  if (yMeal.length) bs.push(`<button class="chip" data-qa="ymeal">複製昨天的${curMeal}（${yMeal.length} 項）</button>`);
+  if (yAll.length > yMeal.length) bs.push(`<button class="chip" data-qa="yall">複製昨天整天（${yAll.length} 項）</button>`);
+  if (last) bs.push(`<button class="chip" data-qa="again">再吃一次：${esc(last.name.slice(0, 12))}</button>`);
+  $('#qa').innerHTML = editing ? '' : bs.join('');
+  $('#qa').hidden = !!editing || !bs.length;
+}
+function copyEntries(src, label) {
+  const time = new Date().toTimeString().slice(0, 5);
+  src.forEach((e) => db.entries.push({ ...e, id: uid(), date: curDate, time, meal: e.mealOverride || e.meal }));
+  save(); toast(`已複製 ${src.length} 項${label}`); show('today');
+}
+function startEdit(id) {
+  const e = db.entries.find((x) => x.id === id);
+  if (!e) return;
+  curDate = e.date; curMeal = e.meal;
+  show('add');
+  openEditor([{ name: e.name, portion: e.portion, nutrients: e.perServing, servings: e.servings, confidence: e.confidence }], e.source, { editId: id }, '<p class="note">修改這筆紀錄</p>');
 }
 function blankItem() {
   return { name: '', portion: '', nutrients: C.normalizeNutrients({}), servings: 1, confidence: null, kcalRange: null };
@@ -188,18 +231,24 @@ function itemCard(it, i, meta) {
   </fieldset>`;
 }
 function openEditor(items, source, meta = {}, header = '') {
-  editing = { source, meta, portions: items.map((it) => it.portion || '') };
+  editing = { source, meta, portions: items.map((it) => it.portion || ''), editId: meta.editId || null };
   $('#capture').hidden = true;
+  $('#lower').hidden = !!meta.editId;
+  $('#qa').hidden = true;
   $('#editor').innerHTML = header + (meta.notes ? `<p class="note">${esc(meta.notes)}</p>` : '') +
     `<div id="cards">${items.map((it, i) => itemCard(it, i, meta)).join('')}</div>
-    <button type="button" class="btn soft block" id="addItem">＋ 再加一項</button>
-    <div class="actions" style="margin-top:10px"><button type="button" class="btn" id="cancelEdit">取消</button><button type="button" class="btn primary" id="saveItems">儲存到${curMeal}</button></div>`;
+    ${meta.editId ? '' : '<button type="button" class="btn soft block" id="addItem">＋ 再加一項</button>'}
+    <div class="actions" style="margin-top:10px"><button type="button" class="btn" id="cancelEdit">取消</button><button type="button" class="btn primary" id="saveItems">${meta.editId ? '儲存修改' : `儲存到${curMeal}`}</button></div>`;
   updateChecks();
 }
 function closeEditor() {
+  const wasEdit = editing?.editId;
   editing = null;
   $('#editor').innerHTML = '';
   $('#capture').hidden = false;
+  $('#lower').hidden = false;
+  renderQuickActions();
+  if (wasEdit) show('today');
 }
 function readCards() {
   return $$('#cards fieldset').map((fs) => {
@@ -220,6 +269,12 @@ function updateChecks() {
 function saveEditor() {
   const cards = readCards().filter((c) => c.include && c.name && c.servings > 0);
   if (!cards.length) return toast('沒有可儲存的項目（需要名稱與份數）');
+  if (editing.editId) {
+    const e = db.entries.find((x) => x.id === editing.editId), c = cards[0];
+    if (!e) return closeEditor();
+    Object.assign(e, { name: c.name, servings: c.servings, meal: curMeal, perServing: c.perServing, nutrients: C.scale(c.perServing, c.servings) });
+    save(); closeEditor(); toast('已更新'); return;
+  }
   const time = new Date().toTimeString().slice(0, 5);
   for (const c of cards) {
     db.entries.push({
@@ -376,6 +431,42 @@ function renderBody() {
   $('#rateSeg').innerHTML = C.RATES.map((r) => `<button data-v="${r}">${r ? `減 ${r}` : '維持'}</button>`).join('');
   seg($('#rateSeg'), p.rate ?? 0);
   renderPlan();
+  renderWeightPanel();
+}
+function weightChart(tr) {
+  const pts = tr.slice(-30);
+  if (pts.length < 2) return '';
+  const w = 340, h = 140, padL = 30, top = 10, base = h - 18;
+  const ys = pts.flatMap((p) => [p.kg, p.avg]);
+  const lo = Math.floor(Math.min(...ys) - 0.5), hi = Math.ceil(Math.max(...ys) + 0.5);
+  const d0 = Date.parse(pts[0].date), d1 = Date.parse(pts[pts.length - 1].date) || d0 + 1;
+  const X = (d) => padL + ((Date.parse(d) - d0) / Math.max(1, d1 - d0)) * (w - padL - 6);
+  const Y = (v) => base - ((v - lo) / (hi - lo)) * (base - top);
+  const dots = pts.map((p) => `<circle class="dot" cx="${X(p.date).toFixed(1)}" cy="${Y(p.kg).toFixed(1)}" r="3"><title>${p.date}：${p.kg} kg</title></circle>`).join('');
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.date).toFixed(1)} ${Y(p.avg).toFixed(1)}`).join('');
+  const lab = (p, anchor) => `<text x="${X(p.date).toFixed(1)}" y="${h - 4}" text-anchor="${anchor}">${+p.date.slice(5, 7)}/${+p.date.slice(8)}</text>`;
+  return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="體重趨勢"><text x="0" y="${Y(hi) + 8}">${hi}</text><text x="0" y="${Y(lo)}">${lo}</text>${dots}<path class="avg" d="${line}"/>${lab(pts[0], 'start')}${lab(pts[pts.length - 1], 'end')}</svg>`;
+}
+function renderWeightPanel() {
+  const tr = C.weightTrend(db.weights);
+  if (!tr.length) {
+    $('#weightPanel').innerHTML = '<h2>體重趨勢</h2><div class="card"><p class="explain" style="margin:0">到「今天」頁記錄體重。連續記錄約 2 週、並持續記飲食，這裡會用體重變化反推你真正的每日消耗，比公式準。</p></div>';
+    return;
+  }
+  const p = plan();
+  const today = C.localDateStr(new Date());
+  const cal = C.calibrateTDEE({ weights: db.weights, entries: db.entries, today });
+  const last = tr[tr.length - 1];
+  let calHtml;
+  if (!cal.ok) calHtml = `<p class="explain" style="margin:10px 0 0">消耗校正還不能算：${esc(cal.reason)}。</p>`;
+  else {
+    const note = p ? C.calibrationNote(cal, p.formulaTdee) : null;
+    const trend = cal.weeklyKg > 0 ? `增加 ${cal.weeklyKg}` : `減少 ${Math.abs(cal.weeklyKg)}`;
+    calHtml = `<div class="kpis" style="margin-top:12px"><div class="kpi"><span>實測每日消耗</span><b>${int(cal.tdee)}<small>kcal</small></b></div>${p ? `<div class="kpi"><span>公式估算</span><b>${int(p.formulaTdee)}<small>kcal</small></b></div>` : ''}</div>
+      <p class="explain">依 ${cal.span} 天內 ${cal.weighIns} 筆體重、${cal.fullDays} 天完整飲食（平均吃 ${int(cal.avgIntake)} kcal，體重每週${trend} kg）反推。${note ? `與公式相差 ${note.diff > 0 ? '+' : ''}${int(note.diff)} kcal（${note.pct}%）。` : ''}${note?.big ? ' <span class="warn">差距超過 25%，常見原因是漏記食物或近期水分變化，建議再累積資料。</span>' : ''}</p>
+      ${p?.calibrated ? '<button class="btn block" id="clearCal">改回公式估算</button>' : p ? `<button class="btn primary block" id="useCal" data-v="${cal.tdee}">採用實測值，重算每日目標</button>` : ''}`;
+  }
+  $('#weightPanel').innerHTML = `<h2>體重趨勢 <small>近 7 天平均 ${last.avg} kg</small></h2><div class="card">${weightChart(tr) || '<p class="explain" style="margin:0">再多記幾天就會畫出趨勢線。</p>'}${p?.calibrated ? `<p class="explain" style="margin:8px 0 0"><span class="ok">目前使用實測消耗 ${int(p.tdee)} kcal</span>${cal.ok ? '' : ''}</p>` : ''}${calHtml}</div>`;
 }
 function renderPlan() {
   const p = plan();
@@ -402,7 +493,7 @@ function renderPlan() {
       <div class="kpi" style="grid-column:1/-1"><span>鈉（上限）</span><b>${int(mt.sodium)}<small>mg</small></b></div>
     </div><p class="explain">${p.rate ? '減脂時蛋白質抓每公斤體重 1.6–2.2 g，有助於保留肌肉。' : '維持體重時蛋白質每公斤體重 1.2–1.6 g。'}脂肪建議占熱量 20–30%，落在範圍內就好，不用吃滿，也別長期低於下限；碳水範圍由其餘熱量推算。範圍內都算達標，進度條上的小直線是下限；「還差多少」以下限計算。</p><p class="explain" style="margin-top:8px">鈉上限 2,400 mg（約鹽 6 g）依衛福部建議。纖維為一般參考值（每 1,000 kcal 約 14 g，至少 25 g），非個人化醫療建議；有慢性病或特殊飲食需求，請依醫師或營養師指示。</p></div>
     <h2>怎麼算的</h2><div class="card"><ul class="explain" style="margin:0;padding-left:18px">
-      <li>BMR 使用 ${p.method} 公式；TDEE ＝ BMR × 活動係數 ${p.activity.f}。</li>
+      <li>BMR 使用 ${p.method} 公式；TDEE ＝ ${p.calibrated ? `實測值 ${int(p.tdee)}（由體重變化反推，公式為 ${int(p.formulaTdee)}）` : `BMR × 活動係數 ${p.activity.f}`}。</li>
       <li>1 公斤體脂約 ${C.KCAL_PER_KG.toLocaleString()} kcal，每週減 ${p.rate || 0} kg 需每日赤字約 ${int((p.rate * C.KCAL_PER_KG) / 7)} kcal。一般建議赤字在 TDEE 的 10–25%（你目前 ${p.deficitPct}%）。</li>
       <li>BMI ${p.bmi}。公式結果有 ±10% 誤差，請以連續 2–3 週的體重平均變化為準，再微調活動量或速度。</li>
     </ul></div>`;
@@ -466,7 +557,7 @@ function renderSettings() {
   $('#apiKey').value = db.settings.apiKey;
   $('#model').value = db.settings.model || '';
   seg($('#speedSeg'), db.settings.speed || 'balanced');
-  $('#dataInfo').textContent = `共 ${db.entries.length} 筆紀錄${db.settings.lastBackup ? `・上次備份 ${db.settings.lastBackup.slice(0, 10)}` : '・尚未備份'}`;
+  $('#dataInfo').textContent = `共 ${db.entries.length} 筆紀錄、${db.weights.length} 筆體重${db.settings.lastBackup ? `・上次備份 ${db.settings.lastBackup.slice(0, 10)}` : '・尚未備份'}`;
 }
 async function shareOrDownload(name, text, type) {
   const blob = new Blob([text], { type });
@@ -492,6 +583,8 @@ function bind() {
   $('#summary').onclick = (e) => { if (e.target.closest('#gotoBody')) show('body'); };
 
   $('#entries').onclick = (e) => {
+    const ed = e.target.closest('[data-edit]');
+    if (ed) return startEdit(ed.dataset.edit);
     const del = e.target.closest('[data-del]');
     const fav = e.target.closest('[data-fav]');
     if (e.target.closest('#emptyAdd')) return show('add');
@@ -511,10 +604,27 @@ function bind() {
     curMeal = b.dataset.v;
     seg($('#mealSeg'), curMeal);
     const s = $('#saveItems');
-    if (s) s.textContent = `儲存到${curMeal}`;
+    if (s && !editing?.editId) s.textContent = `儲存到${curMeal}`;
   };
   $('#cam').onchange = (e) => { analyzePhoto(e.target.files[0]); e.target.value = ''; };
   $('#lib').onchange = (e) => { analyzePhoto(e.target.files[0]); e.target.value = ''; };
+  $('#qa').onclick = (e) => {
+    const b = e.target.closest('[data-qa]');
+    if (!b) return;
+    const y = C.addDays(curDate, -1);
+    const k = b.dataset.qa;
+    if (k === 'ymeal') copyEntries(db.entries.filter((x) => x.date === y && x.meal === curMeal), `（昨天的${curMeal}）`);
+    else if (k === 'yall') copyEntries(db.entries.filter((x) => x.date === y), '（昨天整天）');
+    else { const l = [...db.entries].sort((a, b2) => (b2.date + b2.time).localeCompare(a.date + a.time))[0]; copyEntries([{ ...l, mealOverride: curMeal }], `：${l.name}`); }
+  };
+  $('#weightCard').onclick = (e) => { if (e.target.closest('#wSave')) logWeight($('#wInput').value); };
+  $('#weightCard').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'wInput') logWeight(e.target.value); });
+  $('#weightPanel').onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'useCal') { db.profile.tdeeOverride = +b.dataset.v; save(); renderBody(); toast('已改用實測消耗'); }
+    else if (b.id === 'clearCal') { delete db.profile.tdeeOverride; save(); renderBody(); toast('已改回公式'); }
+  };
   $('#manual').onclick = () => openEditor([blankItem()], 'manual');
   $('#quick').onclick = (e) => {
     const q = e.target.closest('[data-q]');
@@ -560,7 +670,7 @@ function bind() {
     save(); toast('已儲存設定');
   };
   $('#exportJson').onclick = async () => {
-    const data = { app: 'food-log', version: 2, exportedAt: new Date().toISOString(), entries: db.entries, favorites: db.favorites, profile: db.profile };
+    const data = { app: 'food-log', version: 3, exportedAt: new Date().toISOString(), entries: db.entries, weights: db.weights, favorites: db.favorites, profile: db.profile };
     if (await shareOrDownload(`營養記錄備份-${C.localDateStr(new Date())}.json`, JSON.stringify(data), 'application/json')) {
       db.settings.lastBackup = new Date().toISOString(); save(); renderSettings();
     }
@@ -574,9 +684,11 @@ function bind() {
       const d = JSON.parse(await f.text());
       const r = C.mergeEntries(db.entries, d.entries);
       db.entries = r.merged;
+      const wr = C.mergeWeights(db.weights, d.weights);
+      db.weights = wr.merged;
       db.favorites = [...new Set([...db.favorites, ...(d.favorites || [])])];
       if (d.profile && !C.calcBMR(db.profile)) db.profile = { ...db.profile, ...d.profile };
-      save(); renderSettings(); toast(`已匯入 ${r.added} 筆`);
+      save(); renderSettings(); toast(`已匯入 ${r.added} 筆${wr.added ? `、體重 ${wr.added} 筆` : ''}`);
     } catch { toast('檔案格式錯誤，無法匯入'); }
   };
 }

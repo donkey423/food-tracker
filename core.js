@@ -190,7 +190,9 @@ export function energyPlan(p = {}) {
   const b = calcBMR(p);
   if (!b) return null;
   const act = ACTIVITY.find((x) => x.k === p.activity) || ACTIVITY[0];
-  const tdee = Math.round(b.value * act.f);
+  const formulaTdee = Math.round(b.value * act.f);
+  const calibrated = num(p.tdeeOverride) > 0;
+  const tdee = calibrated ? Math.round(num(p.tdeeOverride)) : formulaTdee;
   const rate = RATES.includes(num(p.rate)) ? num(p.rate) : 0;
   const wanted = Math.round((rate * KCAL_PER_KG) / 7);
   const floor = Math.max(b.value, p.sex === 'female' ? 1200 : 1500);
@@ -199,7 +201,7 @@ export function energyPlan(p = {}) {
   const deficit = tdee - target;
   const w = num(p.weight), h = num(p.height);
   return {
-    bmr: b.value, method: b.method, tdee, activity: act, rate, target, deficit, floorHit,
+    bmr: b.value, method: b.method, tdee, formulaTdee, calibrated, activity: act, rate, target, deficit, floorHit,
     deficitPct: tdee ? Math.round((deficit / tdee) * 100) : 0,
     weeklyKg: round1(((deficit * 7) / KCAL_PER_KG) * 100) / 100,
     protein: rate > 0 ? [Math.round(w * 1.6), Math.round(w * 2.2)] : [Math.round(w * 1.2), Math.round(w * 1.6)],
@@ -241,4 +243,68 @@ export function deficitReview(avgKcal, plan) {
   if (!plan || !avgKcal) return null;
   const deficit = Math.round(plan.tdee - avgKcal);
   return { deficit, weeklyKg: Math.round((-deficit * 7 / KCAL_PER_KG) * 100) / 100, vsTarget: Math.round(avgKcal - plan.target) };
+}
+
+// ---------- 體重趨勢與消耗校正 ----------
+const dayNum = (d) => { const [y, m, dd] = d.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, dd) / 864e5); };
+
+// 每天一筆；同日覆寫
+export function upsertWeight(weights, date, kg) {
+  const v = round1(num(kg));
+  const rest = (weights || []).filter((w) => w.date !== date);
+  return v > 20 && v < 300 ? [...rest, { date, kg: v }].sort((a, b) => a.date.localeCompare(b.date)) : rest;
+}
+
+// 趨勢＝當天往前 n 天內體重的平均，抹平水分造成的每日波動
+export function weightTrend(weights, n = 7) {
+  const ws = [...(weights || [])].sort((a, b) => a.date.localeCompare(b.date));
+  return ws.map((w) => {
+    const near = ws.filter((x) => dayNum(x.date) <= dayNum(w.date) && dayNum(x.date) > dayNum(w.date) - n);
+    return { date: w.date, kg: w.kg, avg: round1(near.reduce((a, x) => a + x.kg, 0) / near.length) };
+  });
+}
+
+// 最小平方法：回傳每天的體重變化（kg/天）
+export function slopePerDay(points) {
+  const pts = points.map((p) => ({ x: dayNum(p.date), y: p.kg }));
+  const n = pts.length;
+  if (n < 2) return 0;
+  const mx = pts.reduce((a, p) => a + p.x, 0) / n, my = pts.reduce((a, p) => a + p.y, 0) / n;
+  const den = pts.reduce((a, p) => a + (p.x - mx) ** 2, 0);
+  return den ? pts.reduce((a, p) => a + (p.x - mx) * (p.y - my), 0) / den : 0;
+}
+
+// 以「實際攝取」與「體重趨勢變化」反推真實 TDEE：TDEE ＝ 平均攝取 − 每日體重變化 × 7700
+export function calibrateTDEE({ weights, entries, today, windowDays = 28, minWeights = 5, minSpan = 10, minFullDays = 7, minKcal = 800 }) {
+  const from = dayNum(today) - windowDays + 1;
+  const ws = (weights || []).filter((w) => dayNum(w.date) >= from && dayNum(w.date) <= dayNum(today));
+  if (ws.length < minWeights) return { ok: false, reason: `體重紀錄不足（${ws.length}/${minWeights} 筆）` };
+  const first = dayNum(ws[0].date), last = dayNum(ws[ws.length - 1].date);
+  const span = last - first + 1;
+  if (span < minSpan) return { ok: false, reason: `體重紀錄涵蓋不到 ${minSpan} 天（目前 ${span} 天）` };
+  const perDay = new Map();
+  for (const e of entries) {
+    const d = dayNum(e.date);
+    if (d >= first && d <= last && e.date < today) perDay.set(e.date, (perDay.get(e.date) || 0) + num(e.nutrients?.kcal));
+  }
+  const full = [...perDay.values()].filter((k) => k >= minKcal);
+  if (full.length < minFullDays || full.length < span * 0.6) return { ok: false, reason: `飲食紀錄不足（完整紀錄 ${full.length}/${span} 天，至少 ${minFullDays} 天且 60%）` };
+  const avgIntake = full.reduce((a, k) => a + k, 0) / full.length;
+  const slope = slopePerDay(ws);
+  return { ok: true, tdee: Math.round(avgIntake - slope * KCAL_PER_KG), avgIntake: Math.round(avgIntake), weeklyKg: Math.round(slope * 7 * 100) / 100, span, fullDays: full.length, weighIns: ws.length };
+}
+
+// 實測與公式差距過大時提醒（常見原因：漏記食物、水分波動）
+export function calibrationNote(cal, formulaTdee) {
+  if (!cal?.ok) return null;
+  const diff = cal.tdee - formulaTdee, pct = Math.round((diff / formulaTdee) * 100);
+  const big = Math.abs(pct) > 25;
+  return { diff, pct, big };
+}
+
+export function mergeWeights(existing, incoming) {
+  let out = [...(existing || [])], added = 0;
+  const have = new Set(out.map((w) => w.date));
+  for (const w of incoming || []) if (w && w.date && !have.has(w.date) && num(w.kg) > 20) { out.push({ date: w.date, kg: round1(num(w.kg)) }); added++; }
+  return { merged: out.sort((a, b) => a.date.localeCompare(b.date)), added };
 }

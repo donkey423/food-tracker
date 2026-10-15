@@ -168,6 +168,9 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .chart .bar{fill:var(--accent)}.chart .bar.over{fill:var(--err)}
 .chart .tl{stroke:var(--muted);stroke-dasharray:4 4}
 .chart text{fill:var(--muted);font-size:10px}
+.chart .dot{fill:var(--muted);opacity:.55}.chart .avg{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round}
+.wrow{display:flex;gap:8px;align-items:center}.wrow input{flex:1;min-width:0;min-height:48px;padding:0 12px;border-radius:12px;background:var(--sunk);font-size:18px}
+.item .grow{cursor:pointer}
 .contrib{display:grid;grid-template-columns:1fr 90px auto;gap:10px;align-items:center;font-size:14px;padding:6px 0}
 .contrib span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .contrib small{color:var(--muted);white-space:nowrap}
@@ -200,6 +203,7 @@ a{color:var(--accent)}
     <div id="backupHint" class="hint" hidden><span>超過 7 天沒有備份資料</span><button class="btn soft" style="min-height:36px;padding:0 12px" id="gotoBackup">去備份</button></div>
     <div class="card" id="summary"></div>
     <div id="remain"></div>
+    <div id="weightCard"></div>
     <div id="entries"></div>
   </section>
 
@@ -209,14 +213,17 @@ a{color:var(--accent)}
     <div class="seg" id="mealSeg" role="tablist" aria-label="餐別"></div>
     <div style="height:12px"></div>
     <div id="editor"></div>
+    <div id="qa" class="chips" style="margin-bottom:12px"></div>
     <div class="capture" id="capture">
       <label class="btn primary main"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>拍照辨識<small style="font-weight:400;opacity:.85;font-size:13px">食物或營養標示</small><input type="file" id="cam" accept="image/*" capture="environment"></label>
       <label class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 16l5-5 4 4 3-3 4 4"/></svg>相簿<input type="file" id="lib" accept="image/*"></label>
       <button class="btn" id="manual"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19h4L19 9l-4-4L5 15z"/></svg>手動輸入</button>
     </div>
+    <div id="lower">
     <p class="muted small" style="margin:10px 4px 0">拍<b>食物</b>：AI 自己判斷品項、重量與營養。拍<b>營養標示</b>：直接讀取數字，最準。</p>
     <h2>常用與最近 <small>點一下加入</small></h2>
     <div class="card" style="padding:0"><div id="quick" class="quick"></div></div>
+    </div>
   </section>
 
   <!-- 分析 -->
@@ -230,6 +237,7 @@ a{color:var(--accent)}
   <section id="body" class="tab" hidden>
     <h1>身體與目標</h1>
     <div id="planTop"></div>
+    <div id="weightPanel"></div>
     <div class="card form" id="profileForm">
       <label>生理性別<div class="seg" id="sexSeg"><button data-v="male">男</button><button data-v="female">女</button></div></label>
       <div class="grid3">
