@@ -11,8 +11,12 @@
 - PWA（manifest、service worker、圖示）
 - 測試：單元 15 項通過；E2E（模擬 Gemini）通過
 
+## 部署
+- 正式網址：https://food-tracker-three-omega.vercel.app/（Vercel，push 到 main 自動部署）
+- 已驗證（2026-10-15）：頁面、manifest、圖示正常，Service Worker 已啟用，無 console 錯誤；瀏覽器可直接呼叫 Gemini API（無 CORS 問題）
+
 ## 尚未驗證
-- 真實 Gemini API 呼叫（含瀏覽器直接呼叫的 CORS、模型名稱 `gemini-flash-latest` 是否可用）
+- 用真實 Key 辨識照片、模型名稱 `gemini-flash-latest` 是否可用
 - iPhone 實機：加入主畫面、相機、分享選單匯出
 
 ## 下一步候選
