@@ -218,7 +218,12 @@ export function macroTargets(plan) {
   const fiber = Math.min(38, Math.max(25, Math.round((plan.target * 14) / 1000)));
   // 脂肪建議占熱量 20–30%（範圍）；碳水以 25% 的中間值推算
   const fatMin = Math.round((plan.target * 0.2) / 9), fatMax = Math.round((plan.target * 0.3) / 9);
-  return { kcal: plan.target, protein, fat, fatMin, fatMax, carbs, fiber, sodium: SODIUM_LIMIT };
+  const proteinMax = Math.max(protein, plan.protein[1]);
+  // 碳水範圍：蛋白質、脂肪各取低／高端後，剩餘熱量換算
+  const carbsMax = Math.max(0, Math.round((plan.target - protein * 4 - fatMin * 9) / 4));
+  const carbsMin = Math.max(0, Math.round((plan.target - proteinMax * 4 - fatMax * 9) / 4));
+  const fiberMax = Math.max(fiber, 35);
+  return { kcal: plan.target, protein, proteinMax, fat, fatMin, fatMax, carbs, carbsMin, carbsMax, fiber, fiberMax, sodium: SODIUM_LIMIT };
 }
 
 // 從常吃的食物挑出「蛋白質密度高、放得進剩餘熱量」的建議

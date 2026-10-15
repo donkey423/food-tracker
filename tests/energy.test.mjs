@@ -69,3 +69,12 @@ test('脂肪為 20–30% 熱量的範圍', () => {
   assert.equal(m.fatMax, 63);
   assert.ok(m.fatMin <= m.fat && m.fat <= m.fatMax);
 });
+
+test('蛋白質、碳水、纖維也有範圍', () => {
+  const m = C.macroTargets(C.energyPlan({ sex: 'male', age: 35, height: 183, weight: 80, activity: 'light', rate: 0.5 }));
+  assert.deepEqual([m.protein, m.proteinMax], [128, 176]);
+  assert.deepEqual([m.carbsMin, m.carbsMax], [155, 250]);
+  assert.ok(m.carbsMin <= m.carbs && m.carbs <= m.carbsMax);
+  assert.deepEqual([m.fiber, m.fiberMax], [26, 35]);
+  assert.ok(m.carbsMin >= 0);
+});
