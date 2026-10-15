@@ -80,7 +80,9 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .macros{display:grid;gap:14px;margin-top:4px}
 .macro .top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px}
 .macro .top b{font-weight:600}.macro .top span{color:var(--muted)}
-.meter{height:10px;border-radius:5px;background:var(--sunk);overflow:hidden}
+.meter{position:relative;height:10px;border-radius:5px;background:var(--sunk);overflow:hidden}
+.meter .tick{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--fg);opacity:.4}
+.macro.over .top span{color:var(--err)}
 .meter i{display:block;height:100%;border-radius:5px;transition:width .5s}
 .macro.n i{background:var(--ok)}.macro.s i{background:var(--warn)}.macro.s.over i{background:var(--err)}
 .remain{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:15px}

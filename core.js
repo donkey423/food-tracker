@@ -216,7 +216,9 @@ export function macroTargets(plan) {
   const carbs = Math.max(0, Math.round((plan.target - protein * 4 - fat * 9) / 4));
   // 纖維：一般建議每 1000 kcal 約 14 g，至少 25 g、最多 38 g（參考值）
   const fiber = Math.min(38, Math.max(25, Math.round((plan.target * 14) / 1000)));
-  return { kcal: plan.target, protein, fat, carbs, fiber, sodium: SODIUM_LIMIT };
+  // 脂肪建議占熱量 20–30%（範圍）；碳水以 25% 的中間值推算
+  const fatMin = Math.round((plan.target * 0.2) / 9), fatMax = Math.round((plan.target * 0.3) / 9);
+  return { kcal: plan.target, protein, fat, fatMin, fatMax, carbs, fiber, sodium: SODIUM_LIMIT };
 }
 
 // 從常吃的食物挑出「蛋白質密度高、放得進剩餘熱量」的建議

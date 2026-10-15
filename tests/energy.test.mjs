@@ -62,3 +62,10 @@ test('suggestFoods 依蛋白質密度並受熱量限制', () => {
   assert.deepEqual(C.suggestFoods(lib, 50, 80), []);
   assert.equal(C.suggestFoods(lib, 50, 1000, 3).length, 3);
 });
+
+test('脂肪為 20–30% 熱量的範圍', () => {
+  const m = C.macroTargets(C.energyPlan({ sex: 'male', age: 35, height: 183, weight: 80, activity: 'light', rate: 0.5 }));
+  assert.equal(m.fatMin, 42);
+  assert.equal(m.fatMax, 63);
+  assert.ok(m.fatMin <= m.fat && m.fat <= m.fatMax);
+});

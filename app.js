@@ -75,12 +75,15 @@ function ringSVG(pct) {
   return `<svg viewBox="0 0 132 132"><circle class="track" cx="66" cy="66" r="${r}" fill="none" stroke-width="12"/>
     <circle class="val" cx="66" cy="66" r="${r}" fill="none" stroke-width="12" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>`;
 }
-function macroRow(cls, label, val, target, unit = 'g') {
-  const pct = target ? Math.min(100, (val / target) * 100) : 0;
+function macroRow(cls, label, val, target, unit = 'g', range) {
+  const max = range ? range[1] : target;
+  const pct = max ? Math.min(100, (val / max) * 100) : 0;
   const shown = unit === 'mg' ? int(val) : fmt(val);
-  const right = target ? `${shown} / ${int(target)} ${unit}` : `${shown} ${unit}`;
-  const over = cls === 's' && target && val > target ? ' over' : '';
-  return `<div class="macro ${cls}${over}"><div class="top"><b>${label}</b><span>${right}</span></div><div class="meter"><i style="width:${target ? pct : 0}%"></i></div></div>`;
+  const goal = range ? `${range[0]}–${range[1]}` : int(target || 0);
+  const right = max ? `${shown} / ${goal} ${unit}${range && val > range[1] ? '（偏高）' : ''}` : `${shown} ${unit}`;
+  const over = (cls === 's' && target && val > target) || (range && val > range[1]) ? ' over' : '';
+  const tick = range ? `<u class="tick" style="left:${((range[0] / range[1]) * 100).toFixed(1)}%"></u>` : '';
+  return `<div class="macro ${cls}${over}"><div class="top"><b>${label}</b><span>${right}</span></div><div class="meter"><i style="width:${max ? pct : 0}%"></i>${tick}</div></div>`;
 }
 function remainCard(t, mt) {
   if (!mt) return '';
@@ -130,7 +133,7 @@ function renderToday() {
     ? `<div class="minor"><span>熱量比 蛋白 ${split.protein}%・碳水 ${split.carbs}%・脂肪 ${split.fat}%</span></div>`
     : `<div class="minor"><span>纖維 <b>${fmt(t.fiber)}</b> g</span><span>鈉 <b>${int(t.sodium)}</b> mg</span></div>`;
   $('#summary').innerHTML = `${hero}<div style="height:16px"></div><div class="macros">
-    ${macroRow('p', '蛋白質', t.protein, mt?.protein)}${macroRow('c', '碳水', t.carbs, mt?.carbs)}${macroRow('f', '脂肪', t.fat, mt?.fat)}${extra}</div>${minor}`;
+    ${macroRow('p', '蛋白質', t.protein, mt?.protein)}${macroRow('c', '碳水', t.carbs, mt?.carbs)}${macroRow('f', '脂肪', t.fat, mt?.fat, 'g', mt ? [mt.fatMin, mt.fatMax] : undefined)}${extra}</div>${minor}`;
   $('#remain').innerHTML = remainCard(t, mt);
 
   $('#entries').innerHTML = list.length
@@ -393,10 +396,11 @@ function renderPlan() {
   $('#planBody').innerHTML = `${p.floorHit ? `<div class="card"><p class="explain warn" style="margin:0">⚠ 這個速度需要的赤字太大，會讓攝取低於安全下限（${int(p.target)} kcal），已自動調整。實際約每週減 ${p.weeklyKg} kg，建議改選較慢的速度或增加活動量。</p></div>` : ''}
     <h2>建議營養素</h2><div class="card"><div class="kpis">
       <div class="kpi"><span>蛋白質</span><b>${p.protein[0]}–${p.protein[1]}<small>g</small></b></div>
-      <div class="kpi"><span>脂肪 / 碳水</span><b>${mt.fat} / ${mt.carbs}<small>g</small></b></div>
+      <div class="kpi"><span>脂肪（範圍）</span><b>${mt.fatMin}–${mt.fatMax}<small>g</small></b></div>
+      <div class="kpi"><span>碳水</span><b>${mt.carbs}<small>g</small></b></div>
       <div class="kpi"><span>膳食纖維（至少）</span><b>${mt.fiber}<small>g</small></b></div>
-      <div class="kpi"><span>鈉（上限）</span><b>${int(mt.sodium)}<small>mg</small></b></div>
-    </div><p class="explain">${p.rate ? '減脂時蛋白質抓每公斤體重 1.6–2.2 g，有助於保留肌肉。' : '維持體重時蛋白質每公斤體重 1.2–1.6 g。'}脂肪約占 25% 熱量，其餘給碳水。今日頁的進度條以蛋白質下限為目標。</p><p class="explain" style="margin-top:8px">鈉上限 2,400 mg（約鹽 6 g）依衛福部建議。纖維為一般參考值（每 1,000 kcal 約 14 g，至少 25 g），非個人化醫療建議；有慢性病或特殊飲食需求，請依醫師或營養師指示。</p></div>
+      <div class="kpi" style="grid-column:1/-1"><span>鈉（上限）</span><b>${int(mt.sodium)}<small>mg</small></b></div>
+    </div><p class="explain">${p.rate ? '減脂時蛋白質抓每公斤體重 1.6–2.2 g，有助於保留肌肉。' : '維持體重時蛋白質每公斤體重 1.2–1.6 g。'}脂肪建議占熱量 20–30%，落在範圍內就好，不用吃滿，也別長期低於下限；碳水以脂肪 25% 推算。今日頁蛋白質的進度條以下限為目標。</p><p class="explain" style="margin-top:8px">鈉上限 2,400 mg（約鹽 6 g）依衛福部建議。纖維為一般參考值（每 1,000 kcal 約 14 g，至少 25 g），非個人化醫療建議；有慢性病或特殊飲食需求，請依醫師或營養師指示。</p></div>
     <h2>怎麼算的</h2><div class="card"><ul class="explain" style="margin:0;padding-left:18px">
       <li>BMR 使用 ${p.method} 公式；TDEE ＝ BMR × 活動係數 ${p.activity.f}。</li>
       <li>1 公斤體脂約 ${C.KCAL_PER_KG.toLocaleString()} kcal，每週減 ${p.rate || 0} kg 需每日赤字約 ${int((p.rate * C.KCAL_PER_KG) / 7)} kcal。一般建議赤字在 TDEE 的 10–25%（你目前 ${p.deficitPct}%）。</li>

@@ -1,5 +1,5 @@
 // 離線快取：只快取本 App 檔案，API 請求一律走網路
-const CACHE = 'food-log-v5';
+const CACHE = 'food-log-v6';
 const ASSETS = ['./', './index.html', './app.js', './core.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (e) => e.waitUntil(
