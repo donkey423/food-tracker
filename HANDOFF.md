@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 接手須知
-- 資料存在 localStorage，key `nl.v1`：`{entries[], favorites[], settings{apiKey, model, lastBackup}}`
+- 資料存在 localStorage，key `nl.v1`：`{entries[], favorites[], profile{sex,age,height,weight,bodyFat,activity,rate}, settings{apiKey, model, speed, lastBackup}}`
 - entry：`{id, date, time, meal, name, servings, portion, perServing{kcal,protein,fat,carbs,fiber,sodium}, nutrients(=perServing×servings), source, confidence}`
 - source：`photo-food` | `photo-label` | `manual` | `favorite`
 - 匯出 JSON 不含 API Key
@@ -12,6 +12,7 @@
 ```
 node --test tests/*.mjs
 python3 tests/e2e.py
+python3 tests/e2e_retry.py
 ```
 
 ## 已知限制

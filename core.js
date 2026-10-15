@@ -161,3 +161,60 @@ export function toCSV(entries) {
     .map((e) => [e.date, e.time, e.meal, e.name, e.servings, ...KEYS.map((k) => e.nutrients?.[k] ?? 0), e.source].map(q).join(','));
   return '\uFEFF' + [head.join(','), ...rows].join('\n');
 }
+
+// ---------- 能量消耗與熱量赤字 ----------
+export const ACTIVITY = [
+  { k: 'sedentary', label: '久坐', desc: '辦公室工作，幾乎不運動', f: 1.2 },
+  { k: 'light', label: '輕度', desc: '每週運動 1–3 天', f: 1.375 },
+  { k: 'moderate', label: '中度', desc: '每週運動 3–5 天', f: 1.55 },
+  { k: 'active', label: '高度', desc: '每週運動 6–7 天', f: 1.725 },
+  { k: 'very', label: '非常高', desc: '勞力工作或一天兩練', f: 1.9 },
+];
+export const RATES = [0, 0.25, 0.5, 0.75]; // 每週減重公斤
+export const KCAL_PER_KG = 7700; // 約 1 公斤體脂的熱量（近似值）
+
+// 有體脂率用 Katch-McArdle，否則用 Mifflin-St Jeor
+export function calcBMR(p = {}) {
+  const w = num(p.weight), h = num(p.height), a = num(p.age), bf = num(p.bodyFat);
+  if (w > 0 && bf > 3 && bf < 60) return { value: Math.round(370 + 21.6 * w * (1 - bf / 100)), method: 'Katch-McArdle（依體脂率）' };
+  if (!(w > 0 && h > 0 && a > 0) || !['male', 'female'].includes(p.sex)) return null;
+  const v = 10 * w + 6.25 * h - 5 * a + (p.sex === 'male' ? 5 : -161);
+  return { value: Math.round(v), method: 'Mifflin-St Jeor' };
+}
+
+export function energyPlan(p = {}) {
+  const b = calcBMR(p);
+  if (!b) return null;
+  const act = ACTIVITY.find((x) => x.k === p.activity) || ACTIVITY[0];
+  const tdee = Math.round(b.value * act.f);
+  const rate = RATES.includes(num(p.rate)) ? num(p.rate) : 0;
+  const wanted = Math.round((rate * KCAL_PER_KG) / 7);
+  const floor = Math.max(b.value, p.sex === 'female' ? 1200 : 1500);
+  let target = tdee - wanted, floorHit = false;
+  if (rate > 0 && target < floor) { target = floor; floorHit = true; }
+  const deficit = tdee - target;
+  const w = num(p.weight), h = num(p.height);
+  return {
+    bmr: b.value, method: b.method, tdee, activity: act, rate, target, deficit, floorHit,
+    deficitPct: tdee ? Math.round((deficit / tdee) * 100) : 0,
+    weeklyKg: round1(((deficit * 7) / KCAL_PER_KG) * 100) / 100,
+    protein: rate > 0 ? [Math.round(w * 1.6), Math.round(w * 2.2)] : [Math.round(w * 1.2), Math.round(w * 1.6)],
+    bmi: h ? round1(w / (h / 100) ** 2) : 0,
+  };
+}
+
+// 依目標熱量分配三大營養素建議量：蛋白質取下限、脂肪 25%、其餘碳水
+export function macroTargets(plan) {
+  if (!plan) return null;
+  const protein = plan.protein[0];
+  const fat = Math.round((plan.target * 0.25) / 9);
+  const carbs = Math.max(0, Math.round((plan.target - protein * 4 - fat * 9) / 4));
+  return { kcal: plan.target, protein, fat, carbs };
+}
+
+// 以實際平均攝取評估赤字與預估每週體重變化（負值為減少）
+export function deficitReview(avgKcal, plan) {
+  if (!plan || !avgKcal) return null;
+  const deficit = Math.round(plan.tdee - avgKcal);
+  return { deficit, weeklyKg: Math.round((-deficit * 7 / KCAL_PER_KG) * 100) / 100, vsTarget: Math.round(avgKcal - plan.target) };
+}

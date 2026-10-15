@@ -19,9 +19,9 @@ with sync_playwright() as p:
     pg.click('nav button[data-tab=add]'); pg.click('#manual')
     pg.fill('[data-f=name]', '雞胸肉'); pg.fill('[data-f=servings]', '2')
     for k, v in {'kcal':165,'protein':31,'fat':3.6,'carbs':0}.items(): pg.fill(f'[data-f={k}]', str(v))
-    assert '330 kcal' in pg.inner_text('.check')
+    assert '330 kcal' in pg.inner_text('.sum')
     pg.click('#saveItems')
-    t = pg.inner_text('#totals'); assert '330' in t and '62' in t, t
+    t = pg.inner_text('#summary'); assert '330' in t and '62' in t, t
     # 拍照（模擬）：未設 Key 應導到設定
     pg.click('nav button[data-tab=add]')
     pg.set_input_files('#lib', os.path.join(ROOT, 'icons/icon-192.png'))
@@ -32,7 +32,7 @@ with sync_playwright() as p:
     pg.wait_for_selector('#cards fieldset')
     assert pg.input_value('[data-f=name]') == '無糖豆漿'
     pg.click('#saveItems')
-    t = pg.inner_text('#totals'); assert '480' in t and '77' in t, t
+    t = pg.inner_text('#summary'); assert '480' in t and '77' in t, t
     assert '無糖豆漿' in pg.inner_text('#entries')
     # 常用：加星後出現在快選並可一鍵帶入
     pg.click('[data-fav="無糖豆漿"]')
@@ -41,13 +41,23 @@ with sync_playwright() as p:
     pg.click('[data-q="0"]'); assert pg.input_value('[data-f=name]') == '無糖豆漿'
     # 分析
     pg.click('nav button[data-tab=stats]')
-    s = pg.inner_text('#statsBody'); assert '1 天有紀錄' in s and '雞胸肉' in s, s
+    s = pg.inner_text('#statsBody'); assert '1/7 天有紀錄' in s and '雞胸肉' in s, s
     # 匯出 CSV
     pg.click('nav button[data-tab=settings]')
     with pg.expect_download() as d: pg.click('#exportCsv')
     csv = open(d.value.path(), encoding='utf-8-sig').read(); assert '雞胸肉' in csv and csv.count('\n') == 2, csv
+    # 身體資料 → 每日目標與赤字
+    pg.click('nav button[data-tab=body]')
+    pg.click('#sexSeg [data-v=male]')
+    for k, v in {'#pAge':'35','#pHeight':'183','#pWeight':'80'}.items(): pg.fill(k, v)
+    pg.select_option('#pActivity', 'light'); pg.click('#rateSeg [data-v="0.5"]')
+    b2 = pg.inner_text('#planBody'); assert '1,889' in b2 and '1,774' in b2 and '2,439' in b2 and '550' in b2, b2
+    pg.click('nav button[data-tab=today]')
+    s2 = pg.inner_text('#summary'); assert '還可以吃' in s2 and '1,409' in s2 and '77 / 128 g' in s2, s2
+    pg.click('nav button[data-tab=stats]')
+    v = pg.inner_text('#statsBody'); assert '今天還沒結束' in v, v
     # 重新載入後資料仍在
-    pg.reload(); assert '480' in pg.inner_text('#totals')
+    pg.reload(); assert '480' in pg.inner_text('#summary')
     if os.environ.get('SHOT'): pg.screenshot(path=os.environ['SHOT'], full_page=True)
     b.close()
 srv.shutdown()
