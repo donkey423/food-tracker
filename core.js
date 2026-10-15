@@ -10,13 +10,17 @@ export const NUTRIENTS = [
 export const KEYS = NUTRIENTS.map((n) => n.k);
 export const MEALS = ['早餐', '午餐', '晚餐', '點心'];
 
-export const PROMPT = `你是營養分析助手。先判斷照片是「營養標示」(label) 或「食物」(food)。只輸出 JSON，不要其他文字，格式：
-{"type":"label"|"food","items":[{"name":"繁體中文名稱","portion":"每份份量描述","kcal":0,"protein":0,"fat":0,"carbs":0,"fiber":0,"sodium":0,"confidence":"high"|"medium"|"low","kcal_low":0,"kcal_high":0}],"servings_per_package":null,"notes":"簡短說明"}
-規則：
-- 單位：kcal 為大卡，protein/fat/carbs/fiber 為公克，sodium 為毫克。
-- label：items 只放一項，數值為標示上的「每一份」；servings_per_package 填「本包裝含幾份」；若只有每100公克的數值，portion 寫「100 公克」、servings_per_package 填 null。讀不到的欄位填 0 並在 notes 說明。confidence 依字跡清晰度判斷。
-- food：每個可辨識的品項一項，數值為照片中的估計份量；考量台灣常見的烹調用油與醬汁；kcal_low/kcal_high 為合理熱量範圍；confidence 依辨識與份量估計把握度。
-- 無法辨識時 items 為空陣列，並在 notes 說明原因。`;
+const PROMPT_SHARED = `只輸出 JSON，不要任何其他文字或解釋。格式：
+{"type":"label"|"food","items":[{"name":"繁體中文名稱","portion":"份量描述","kcal":0,"protein":0,"fat":0,"carbs":0,"fiber":0,"sodium":0,"confidence":"high"|"medium"|"low","kcal_low":0,"kcal_high":0}],"servings_per_package":null,"notes":"20 字內"}
+單位：kcal 為大卡，protein/fat/carbs/fiber 為公克，sodium 為毫克。`;
+const RULE_LABEL = `type=label：只讀取照片上印出的營養標示，items 只放一項，數值為標示上的「每一份」；servings_per_package 填「本包裝含幾份」；若只有每100公克的數值，portion 寫「100 公克」、servings_per_package 填 null。讀不到的欄位填 0。若照片裡沒有任何營養數值（例如只有成分表、包裝或食物），不要估算，立刻回傳 items 為空陣列，notes 寫「照片中沒有營養數值」。`;
+const RULE_FOOD = `type=food：這是食物照片，請你自己判斷每個可辨識的品項，並估算實際重量與營養。portion 一定要含估計重量，例如「約 250 公克」或「約 1 碗（200 公克）」。數值為這份照片中整份的估計量；考量台灣常見的烹調用油與醬汁；kcal_low/kcal_high 為合理熱量範圍；confidence 依辨識與份量估計把握度。完全無法辨識時 items 為空陣列。`;
+export function promptFor(mode = 'auto') {
+  if (mode === 'food') return `${PROMPT_SHARED}\n這張一定是食物照，type 固定填 "food"。\n${RULE_FOOD}`;
+  if (mode === 'label') return `${PROMPT_SHARED}\n這張是營養標示，type 固定填 "label"。\n${RULE_LABEL}`;
+  return `你是營養分析助手。先判斷照片是「營養標示」(label) 或「食物」(food)。${PROMPT_SHARED}\n${RULE_LABEL}\n${RULE_FOOD}`;
+}
+export const PROMPT = promptFor('auto');
 
 export const round1 = (x) => Math.round(x * 10) / 10;
 

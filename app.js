@@ -154,11 +154,11 @@ function itemCard(it, i, meta) {
     .map((v) => `<button type="button" class="chip" data-sv="${v}">${v === meta.servingsPerPackage ? `整包 ${v}` : v} 份</button>`).join('');
   return `<fieldset class="card edit" data-i="${i}">
     <div class="head"><input class="name grow" data-f="name" value="${esc(it.name)}" placeholder="食物名稱"><label class="check-inc"><input type="checkbox" data-f="include" checked>加入</label></div>
-    ${conf}${it.portion ? `<div class="small muted">每份：${esc(it.portion)}</div>` : ''}
+    ${conf}${it.portion ? `<div class="small muted">${meta.type === 'food' ? '估計份量' : '每份'}：${esc(it.portion)}</div>` : ''}
     <div class="row wrap"><div class="stepper"><button type="button" data-step="-0.5" aria-label="減少">−</button><input type="number" inputmode="decimal" step="0.1" min="0" data-f="servings" value="${it.servings ?? 1}" aria-label="份數"><button type="button" data-step="0.5" aria-label="增加">+</button></div><span class="muted small">份</span></div>
     <div class="chips">${chips}</div>
     <div class="nut">${C.NUTRIENTS.map((n) => `<label>${n.label}（${n.unit}）<input type="number" inputmode="decimal" step="any" min="0" data-f="${n.k}" value="${it.nutrients[n.k]}"></label>`).join('')}</div>
-    <div class="small muted" style="margin-top:-4px">以上為「每份」數值</div>
+    <div class="small muted" style="margin-top:-4px">${meta.type === 'food' ? '以上為 AI 估算的整份數值，份數 1 ＝ 照片中這一份' : '以上為「每份」數值'}</div>
     <div class="sum"></div>
   </fieldset>`;
 }
@@ -228,20 +228,31 @@ async function downscale(file, max = 1024) {
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.75);
 }
-async function requestGemini(model, b64) {
+let job = null;
+const DEADLINE = window.__NL_DEADLINE || 32000; // 整體最多等待毫秒
+async function requestGemini(model, b64, mode) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(db.settings.apiKey)}`;
-  const generationConfig = { responseMimeType: 'application/json', temperature: 0.2 };
+  const generationConfig = { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 2048 };
   // 降低思考強度以加速；輕量模型預設不思考，不需設定
   if (!model.includes('lite') && !noThinking.has(model)) generationConfig.thinkingConfig = { thinkingLevel: 'low' };
+  const ctl = new AbortController();
+  job.controller = ctl;
+  const timer = setTimeout(() => ctl.abort(), Math.max(3000, Math.min(22000, DEADLINE - (Date.now() - job.t0))));
   let res;
   try {
     res = await fetch(url, {
       method: 'POST',
+      signal: ctl.signal,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: C.PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig }),
+      body: JSON.stringify({ contents: [{ parts: [{ text: C.promptFor(mode) }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig }),
     });
-  } catch {
-    throw new Error('網路連線失敗，請確認網路後重試');
+  } catch (err) {
+    const e = new Error(job.cancelled ? '已取消' : err.name === 'AbortError' ? '回應太慢' : '網路連線失敗，請確認網路後重試');
+    e.cancelled = job.cancelled;
+    e.timeout = !job.cancelled && err.name === 'AbortError';
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     let detail = '';
@@ -261,20 +272,24 @@ function explainError(e) {
   if (e.status >= 500) return new Error('Google 伺服器目前忙碌（已自動重試並切換備用模型），請過幾分鐘再按「重試辨識」');
   return new Error(`辨識失敗（HTTP ${e.status}）${e.detail ? '：' + e.detail : ''}`);
 }
-// 5xx 重試一次後換備用模型；404 換下一個；不支援思考設定時改用不帶設定的請求
-async function callGemini(b64) {
+// 5xx 重試一次後換備用模型；逾時或 404 直接換下一個；整體超過 DEADLINE 就停止
+async function callGemini(b64, mode) {
   const list = MODELS[db.settings.speed] || MODELS.balanced;
   const models = [...new Set([db.settings.model, ...list].filter(Boolean))];
   let last;
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (job.cancelled) { const c = new Error('已取消'); c.cancelled = true; throw c; }
+      if (Date.now() - job.t0 > DEADLINE) throw new Error(`等待超過 ${DEADLINE / 1000} 秒，先停止。可以按「重試辨識」，或改用手動輸入`);
       try {
-        return C.parseAIResult(await requestGemini(model, b64));
+        return C.parseAIResult(await requestGemini(model, b64, mode));
       } catch (e) {
         last = e;
+        if (e.cancelled) throw e;
+        if (e.timeout) break;
         if (e.status === 400 && /think/i.test(e.detail) && !noThinking.has(model)) { noThinking.add(model); continue; }
         if ([500, 502, 503, 504].includes(e.status)) {
-          if (attempt === 0) { await sleep(1200); continue; }
+          if (attempt === 0) { await sleep(1000); continue; }
           break;
         }
         if (e.status === 404) break;
@@ -282,21 +297,28 @@ async function callGemini(b64) {
       }
     }
   }
+  if (last?.timeout) throw new Error('Google 回應太慢，先停止。可以按「重試辨識」，或改用手動輸入');
   throw explainError(last);
 }
-async function runAnalysis(dataUrl) {
+async function runAnalysis(dataUrl, mode = 'auto') {
   $('#capture').hidden = true;
-  const t0 = Date.now();
-  $('#editor').innerHTML = `<div class="card busy"><img class="thumb" src="${dataUrl}" alt=""><div class="spinner"></div><span>辨識中… <b id="elapsed">0</b> 秒</span></div>`;
-  const timer = setInterval(() => { const el = $('#elapsed'); if (el) el.textContent = Math.floor((Date.now() - t0) / 1000); }, 500);
+  job = { t0: Date.now(), cancelled: false, controller: null };
+  const mine = job;
+  $('#editor').innerHTML = `<div class="card busy"><img class="thumb" src="${dataUrl}" alt=""><div class="spinner"></div><span>${mode === 'food' ? 'AI 正在判斷食物與份量' : '辨識中'}… <b id="elapsed">0</b> 秒</span><button type="button" class="btn" id="cancelJob" style="min-height:40px">取消</button></div>`;
+  const timer = setInterval(() => { const el = $('#elapsed'); if (el) el.textContent = Math.floor((Date.now() - mine.t0) / 1000); }, 500);
   const thumb = `<img class="thumb" src="${dataUrl}" alt="">`;
   try {
-    const r = await callGemini(dataUrl.split(',')[1]);
-    const secs = ((Date.now() - t0) / 1000).toFixed(1);
-    if (!r.items.length) return openEditor([blankItem()], 'manual', {}, thumb + `<p class="note err">無法辨識${r.notes ? '：' + esc(r.notes) : ''}，請手動輸入。</p>`);
-    const tip = r.type === 'label' ? `已讀取營養標示（每份數值），請確認份數。` : `食物照為估算值，油和醬汁誤差較大，請依實際份量調整。`;
+    const r = await callGemini(dataUrl.split(',')[1], mode);
+    if (mine.cancelled) return;
+    const secs = ((Date.now() - mine.t0) / 1000).toFixed(1);
+    if (!r.items.length) {
+      const more = mode === 'food' ? '' : `<button type="button" class="btn primary block" id="asFood" style="margin-bottom:10px">當成食物，讓 AI 估算份量</button>`;
+      return openEditor([blankItem()], 'manual', {}, thumb + `<p class="note err">${esc(r.notes || '無法辨識')}（${secs} 秒）</p>${more}<p class="note">或直接在下方手動輸入：</p>`);
+    }
+    const tip = r.type === 'label' ? '已讀取營養標示（每份數值），請確認份數。' : '這是 AI 依照片估算的重量與營養，油和醬汁誤差較大。吃得比較多或少，用下方份數調整。';
     openEditor(r.items, r.type === 'label' ? 'photo-label' : 'photo-food', { ...r }, thumb + `<p class="note">${tip}<span class="small">（${secs} 秒）</span></p>`);
   } catch (e) {
+    if (mine.cancelled || e.cancelled) return;
     openEditor([blankItem()], 'manual', {}, thumb + `<p class="note err">${esc(e.message)}</p><button type="button" class="btn primary block" id="retryPhoto" style="margin-bottom:12px">重試辨識</button>`);
   } finally {
     clearInterval(timer);
@@ -481,6 +503,8 @@ function bind() {
     if (!t) return;
     if (t.id === 'saveItems') saveEditor();
     else if (t.id === 'retryPhoto') runAnalysis(lastPhoto);
+    else if (t.id === 'asFood') runAnalysis(lastPhoto, 'food');
+    else if (t.id === 'cancelJob') { if (job) { job.cancelled = true; job.controller?.abort(); } closeEditor(); }
     else if (t.id === 'cancelEdit') closeEditor();
     else if (t.id === 'addItem') {
       const cards = $('#cards');
