@@ -17,3 +17,9 @@ python3 tests/e2e.py
 ## 已知限制
 - 食物照數值為估算，油和醬汁誤差大
 - 免費額度用完回 429，介面會提示並改用手動輸入
+
+## 下一步（本機 Claude Code 接手）
+1. 建 repo 並推送：`gh repo create donkey423/food-log --private --source . --push`
+2. Vercel 連 repo（Framework: Other，無 build command，Output 為根目錄），之後 push 自動部署
+3. iPhone Safari 開部署網址 →「加入主畫面」→ 設定填 Gemini API Key
+4. 拍一張營養標示，驗證真實 Gemini 呼叫（CORS、模型名稱）；結果回填 STATUS.md
