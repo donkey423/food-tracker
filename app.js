@@ -183,9 +183,12 @@ async function downscale(file, max = 1280) {
   return c.toDataURL('image/jpeg', 0.82);
 }
 
-async function callGemini(b64) {
-  const { apiKey, model } = db.settings;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || DEFAULT_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+const FALLBACK_MODELS = ['gemini-flash-lite-latest', 'gemini-2.5-flash'];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lastPhoto = '';
+
+async function requestGemini(model, b64) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(db.settings.apiKey)}`;
   let res;
   try {
     res = await fetch(url, {
@@ -199,15 +202,61 @@ async function callGemini(b64) {
   } catch {
     throw new Error('網路連線失敗，請確認網路後重試');
   }
-  if (res.status === 429) throw new Error('免費額度已用完或請求太頻繁，請稍後再試，或先改用手動輸入');
   if (!res.ok) {
-    let m = '';
-    try { m = (await res.json()).error?.message || ''; } catch {}
-    throw new Error(`辨識失敗（HTTP ${res.status}）${m ? '：' + m : ''}`);
+    let detail = '';
+    try { detail = (await res.json()).error?.message || ''; } catch {}
+    const e = new Error(`HTTP ${res.status}`);
+    e.status = res.status;
+    e.detail = detail;
+    throw e;
   }
   const j = await res.json();
-  const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-  return C.parseAIResult(text);
+  return j.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+}
+
+function explainError(e) {
+  if (!e.status) return e;
+  if (e.status === 429) return new Error('免費額度已用完或請求太頻繁，請稍後再試，或先改用手動輸入');
+  if ([400, 401, 403].includes(e.status) && /api key/i.test(e.detail)) return new Error('API Key 無效，請到「設定」重新貼上');
+  if (e.status >= 500) return new Error('Google 伺服器目前忙碌（已自動重試並切換備用模型），請過幾分鐘再按「重試辨識」');
+  return new Error(`辨識失敗（HTTP ${e.status}）${e.detail ? '：' + e.detail : ''}`);
+}
+
+// 伺服器忙碌（5xx）時重試一次，再換備用模型；模型不存在（404）直接換下一個
+async function callGemini(b64) {
+  const models = [...new Set([db.settings.model || DEFAULT_MODEL, ...FALLBACK_MODELS])];
+  let last;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return C.parseAIResult(await requestGemini(model, b64));
+      } catch (e) {
+        last = e;
+        if ([500, 502, 503, 504].includes(e.status)) {
+          if (attempt === 0) { await sleep(1500); continue; }
+          break;
+        }
+        if (e.status === 404) break;
+        throw explainError(e);
+      }
+    }
+  }
+  throw explainError(last);
+}
+
+async function runAnalysis(dataUrl) {
+  $('#editor').innerHTML = '<p class="busy">照片辨識中…（伺服器忙碌時會自動重試，最多約十秒）</p>';
+  const thumb = `<img class="thumb" src="${dataUrl}" alt="">`;
+  try {
+    const r = await callGemini(dataUrl.split(',')[1]);
+    if (!r.items.length) {
+      return openEditor([blankItem()], 'manual', {}, thumb + `<p class="err">無法辨識${r.notes ? '：' + esc(r.notes) : ''}，請手動輸入。</p>`);
+    }
+    const tip = r.type === 'label' ? '<p class="note">已讀取營養標示（每份數值），請確認份數。</p>' : '<p class="note">食物照為估算值，油和醬汁誤差較大，請依實際份量調整。</p>';
+    openEditor(r.items, r.type === 'label' ? 'photo-label' : 'photo-food', { ...r }, thumb + tip);
+  } catch (e) {
+    openEditor([blankItem()], 'manual', {}, thumb + `<p class="err">${esc(e.message)}</p><div class="row"><button type="button" class="primary" id="retryPhoto">重試辨識</button></div>`);
+  }
 }
 
 async function analyzePhoto(file) {
@@ -216,20 +265,13 @@ async function analyzePhoto(file) {
     toast('請先在「設定」填入 Gemini API Key');
     return show('settings');
   }
-  $('#editor').innerHTML = '<p class="busy">照片辨識中…</p>';
-  let dataUrl = '';
+  $('#editor').innerHTML = '<p class="busy">處理照片中…</p>';
   try {
-    dataUrl = await downscale(file);
-    const r = await callGemini(dataUrl.split(',')[1]);
-    const thumb = `<img class="thumb" src="${dataUrl}" alt="">`;
-    if (!r.items.length) {
-      return openEditor([blankItem()], 'manual', {}, thumb + `<p class="err">無法辨識${r.notes ? '：' + esc(r.notes) : ''}，請手動輸入。</p>`);
-    }
-    const tip = r.type === 'label' ? '<p class="note">已讀取營養標示（每份數值），請確認份數。</p>' : '<p class="note">食物照為估算值，油和醬汁誤差較大，請依實際份量調整。</p>';
-    openEditor(r.items, r.type === 'label' ? 'photo-label' : 'photo-food', { ...r }, thumb + tip);
+    lastPhoto = await downscale(file);
   } catch (e) {
-    openEditor([blankItem()], 'manual', {}, (dataUrl ? `<img class="thumb" src="${dataUrl}" alt="">` : '') + `<p class="err">${esc(e.message)}</p>`);
+    return openEditor([blankItem()], 'manual', {}, `<p class="err">${esc(e.message)}</p>`);
   }
+  await runAnalysis(lastPhoto);
 }
 
 // ---------- 分析 ----------
@@ -325,6 +367,7 @@ function bind() {
   ed.addEventListener('input', updateChecks);
   ed.addEventListener('click', (e) => {
     if (e.target.id === 'saveItems') saveEditor();
+    else if (e.target.id === 'retryPhoto') runAnalysis(lastPhoto);
     else if (e.target.id === 'cancelEdit') { editing = null; ed.innerHTML = ''; }
     else if (e.target.id === 'addItem') {
       const cards = $('#cards');

@@ -15,8 +15,11 @@
 - 正式網址：https://food-tracker-three-omega.vercel.app/（Vercel，push 到 main 自動部署）
 - 已驗證（2026-10-15）：頁面、manifest、圖示正常，Service Worker 已啟用，無 console 錯誤；瀏覽器可直接呼叫 Gemini API（無 CORS 問題）
 
+## 實機驗證（2026-10-15）
+- iPhone 已安裝並填入 Key；首次辨識收到 Gemini 503（高負載）→ 已加：5xx 重試一次、切換備用模型（flash-lite、2.5-flash）、「重試辨識」按鈕
+
 ## 尚未驗證
-- 用真實 Key 辨識照片、模型名稱 `gemini-flash-latest` 是否可用
+- 真實辨識成功的結果與準確度（待 503 恢復後重拍）
 - iPhone 實機：加入主畫面、相機、分享選單匯出
 
 ## 下一步候選
