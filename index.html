@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>營養記錄</title>
+<meta name="theme-color" content="#2f7d5b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="營養記錄">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+:root{--bg:#f6f7f5;--card:#fff;--fg:#1d2420;--muted:#66706a;--line:#e2e6e3;--accent:#2f7d5b;--accent-fg:#fff;--warn:#b5651d;--err:#c0392b;--p:#3b7dd8;--c:#e0a526;--f:#d65a5a}
+@media (prefers-color-scheme:dark){:root{--bg:#121513;--card:#1c201e;--fg:#e8ece9;--muted:#9aa49e;--line:#2c322f;--accent:#4fae84;--accent-fg:#0d1210;--warn:#e3a35b;--err:#ef7b6e}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,"PingFang TC","Noto Sans TC",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 calc(64px + env(safe-area-inset-bottom))}
+main{max-width:640px;margin:0 auto;padding:12px 16px}
+h1{font-size:20px;margin:8px 0 12px}h3{font-size:15px;margin:18px 0 8px;display:flex;justify-content:space-between;color:var(--muted)}
+h3 small{font-weight:400}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:var(--line)}
+.primary{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.ghost{background:transparent;border:1px solid var(--line)}.small{padding:6px 10px;font-size:14px}
+.icon{background:transparent;padding:6px 8px;font-size:18px;color:var(--muted)}
+input,select{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+input[type=checkbox]{width:auto}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row.actions{justify-content:flex-end;margin-top:12px}
+.datebar{display:flex;gap:8px;align-items:center}.datebar input{flex:1;text-align:center}
+.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.stat{background:var(--card);border-radius:12px;padding:10px;display:flex;flex-direction:column}
+.stat span,.stat small{color:var(--muted);font-size:13px}.stat b{font-size:20px}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:12px;background:var(--line)}
+.bar i.p,.legend .p::before{background:var(--p)}.bar i.c,.legend .c::before{background:var(--c)}.bar i.f,.legend .f::before{background:var(--f)}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:6px}
+.legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.entry{display:flex;align-items:center;gap:4px;background:var(--card);border-radius:12px;padding:10px 6px 10px 12px;margin-bottom:8px}
+.entry small{display:block;color:var(--muted);font-size:13px}.grow{flex:1;min-width:0}
+.empty,.muted{color:var(--muted);font-size:14px}.empty{text-align:center;padding:16px 0}
+.warn{color:var(--warn)}.ok{color:var(--accent)}.err{color:var(--err)}
+.note{font-size:14px;color:var(--muted);margin:8px 0}.busy{text-align:center;padding:24px;color:var(--muted)}
+.hint{background:var(--card);border-left:3px solid var(--warn);padding:10px 12px;border-radius:8px;font-size:14px;margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.add-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0}
+.add-btns label,.add-btns button{display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;padding:14px 6px;font-weight:600;cursor:pointer}
+.add-btns label{background:var(--accent);color:var(--accent-fg)}.add-btns input{display:none}
+.card{border:0;background:var(--card);border-radius:12px;padding:12px;margin:0 0 10px;display:flex;flex-direction:column;gap:8px}
+.card small{color:var(--muted);font-size:13px}.card .name{font-weight:600}
+.inc{display:flex;gap:6px;align-items:center;font-size:14px;margin-right:auto}
+.sv{display:flex;gap:8px;align-items:center;white-space:nowrap}.sv input{width:90px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid label{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.check{font-size:13px;margin:0;color:var(--muted)}
+.thumb{width:100%;max-height:220px;object-fit:cover;border-radius:12px}
+.quick{display:flex;flex-direction:column;gap:6px}
+.qitem{display:flex;justify-content:space-between;background:var(--card);text-align:left;gap:8px}
+.qitem small{color:var(--muted);white-space:nowrap}
+.chart{width:100%;height:auto;background:var(--card);border-radius:12px;padding:8px}
+.chart rect{fill:var(--accent)}.chart text{fill:var(--muted);font-size:9px}
+.contrib{display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:center;font-size:14px;margin-bottom:6px}
+.contrib span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.contrib small{color:var(--muted)}
+.mini{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.mini i{display:block;height:100%;background:var(--accent)}
+.field{display:flex;flex-direction:column;gap:4px;margin:12px 0;font-size:14px;color:var(--muted)}
+.box{background:var(--card);border-radius:12px;padding:12px;margin-top:12px}
+.box p{margin:4px 0 8px;font-size:14px;color:var(--muted)}
+.file{display:inline-block;padding:10px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer}.file input{display:none}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:transparent;border-radius:0;padding:12px 0;color:var(--muted);font-size:14px}
+nav button.on{color:var(--accent);font-weight:600}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%}
+#toast.show{opacity:1}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <section id="today" class="tab">
+    <div class="datebar"><button id="prev" aria-label="前一天">‹</button><input type="date" id="date"><button id="next" aria-label="後一天">›</button></div>
+    <div id="backupHint" class="hint" hidden><span>超過 7 天沒有備份</span><button class="small primary" id="gotoBackup">去備份</button></div>
+    <div id="totals" class="totals"></div>
+    <div id="macro"></div>
+    <div id="entries"></div>
+  </section>
+
+  <section id="add" class="tab" hidden>
+    <h1>新增紀錄 <small class="muted" id="addDate"></small></h1>
+    <label class="field">餐別<select id="meal"></select></label>
+    <div class="add-btns">
+      <label>📷 拍照<input type="file" id="cam" accept="image/*" capture="environment"></label>
+      <label>🖼 相簿<input type="file" id="lib" accept="image/*"></label>
+      <button type="button" id="manual" class="ghost">✎ 手動</button>
+    </div>
+    <p class="muted">可拍食物或營養標示，辨識後確認數值再儲存。</p>
+    <div id="editor"></div>
+    <h3>常用與最近</h3>
+    <div id="quick" class="quick"></div>
+  </section>
+
+  <section id="stats" class="tab" hidden>
+    <h1>分析</h1>
+    <div class="row">
+      <select id="range" style="flex:1"><option value="7">最近 7 天</option><option value="14">最近 14 天</option><option value="30">最近 30 天</option></select>
+      <select id="contribKey" style="flex:1" aria-label="主要來源的營養素"></select>
+    </div>
+    <div id="statsBody"></div>
+  </section>
+
+  <section id="settings" class="tab" hidden>
+    <h1>設定</h1>
+    <div class="box">
+      <b>Gemini API Key</b>
+      <p>到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 免費申請。Key 只存在這支手機上，不會上傳到其他地方。</p>
+      <label class="field">API Key<input type="password" id="apiKey" autocomplete="off" placeholder="AIza…"></label>
+      <label class="field">模型名稱<input id="model" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <button class="primary" id="saveKey">儲存設定</button>
+    </div>
+    <div class="box">
+      <b>資料備份</b>
+      <p id="dataInfo"></p>
+      <div class="row">
+        <button class="primary" id="exportJson">備份（JSON）</button>
+        <button class="ghost" id="exportCsv">匯出 CSV</button>
+        <label class="file">還原備份<input type="file" id="importFile" accept="application/json,.json"></label>
+      </div>
+      <p>資料存在手機瀏覽器內，刪除 App 或清除網站資料會一起消失，請定期備份。</p>
+    </div>
+  </section>
+</main>
+<nav>
+  <button data-tab="today">今日</button>
+  <button data-tab="add">＋ 新增</button>
+  <button data-tab="stats">分析</button>
+  <button data-tab="settings">設定</button>
+</nav>
+<div id="toast" role="status"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
