@@ -54,7 +54,11 @@ with sync_playwright() as p:
     b2 = pg.inner_text('#planTop'); assert '1,889' in b2 and '1,774' in b2 and '2,439' in b2 and '550' in b2 and '2,439 − 550 = 1,889' in b2, b2
     assert pg.evaluate("document.querySelector('#planTop').getBoundingClientRect().top < document.querySelector('#profileForm').getBoundingClientRect().top")
     pg.click('nav button[data-tab=today]')
-    s2 = pg.inner_text('#summary'); assert '基礎代謝' in s2 and '赤字' in s2 and '還可以吃' in s2 and '1,409' in s2 and '77 / 128 g' in s2, s2
+    s2 = pg.inner_text('#summary')
+    assert '基礎代謝' in s2 and '赤字' in s2 and '還可以吃' in s2 and '1,409' in s2 and '77 / 128 g' in s2, s2
+    assert '膳食纖維' in s2 and '2,400 mg' in s2 and '/ 26 g' in s2, s2
+    rm = pg.inner_text('#remain')
+    assert '蛋白質還差 51 g' in rm and '熱量還有 1,409 kcal' in rm and '雞胸肉' in rm and '鈉還可以吃' in rm, rm
     pg.click('nav button[data-tab=stats]')
     v = pg.inner_text('#statsBody'); assert '今天還沒結束' in v and '計畫赤字' in v and '550' in v, v
     # 重新載入後資料仍在

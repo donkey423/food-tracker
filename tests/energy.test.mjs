@@ -41,3 +41,24 @@ test('deficitReview 預估每週變化', () => {
   assert.equal(r.weeklyKg, -0.5);
   assert.equal(r.vsTarget, 0);
 });
+
+test('macroTargets 含纖維與鈉上限', () => {
+  const m = C.macroTargets(C.energyPlan({ sex: 'male', age: 35, height: 183, weight: 80, activity: 'light', rate: 0.5 }));
+  assert.equal(m.fiber, 26);
+  assert.equal(m.sodium, 2400);
+  const low = C.macroTargets({ target: 1200, protein: [90, 100] });
+  assert.equal(low.fiber, 25);
+  assert.equal(C.macroTargets({ target: 4000, protein: [90, 100] }).fiber, 38);
+});
+test('suggestFoods 依蛋白質密度並受熱量限制', () => {
+  const lib = [
+    { name: '雞胸肉', perServing: { protein: 31, kcal: 165 } },
+    { name: '豆漿', perServing: { protein: 15, kcal: 150 } },
+    { name: '蛋糕', perServing: { protein: 4, kcal: 400 } },
+    { name: '便當', perServing: { protein: 38, kcal: 850 } },
+  ];
+  assert.deepEqual(C.suggestFoods(lib, 50, 500).map((x) => x.name), ['雞胸肉', '豆漿']);
+  assert.deepEqual(C.suggestFoods(lib, 5, 500), []);
+  assert.deepEqual(C.suggestFoods(lib, 50, 80), []);
+  assert.equal(C.suggestFoods(lib, 50, 1000, 3).length, 3);
+});

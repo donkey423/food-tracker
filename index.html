@@ -82,6 +82,8 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .macro .top b{font-weight:600}.macro .top span{color:var(--muted)}
 .meter{height:10px;border-radius:5px;background:var(--sunk);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:5px;transition:width .5s}
+.macro.n i{background:var(--ok)}.macro.s i{background:var(--warn)}.macro.s.over i{background:var(--err)}
+.remain{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:15px}
 .macro.p i{background:var(--p)}.macro.c i{background:var(--c)}.macro.f i{background:var(--f)}
 .minor{display:flex;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
 .minor b{color:var(--fg);font-weight:600}
@@ -195,6 +197,7 @@ a{color:var(--accent)}
     </div>
     <div id="backupHint" class="hint" hidden><span>超過 7 天沒有備份資料</span><button class="btn soft" style="min-height:36px;padding:0 12px" id="gotoBackup">去備份</button></div>
     <div class="card" id="summary"></div>
+    <div id="remain"></div>
     <div id="entries"></div>
   </section>
 

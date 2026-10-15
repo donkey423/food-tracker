@@ -208,12 +208,25 @@ export function energyPlan(p = {}) {
 }
 
 // 依目標熱量分配三大營養素建議量：蛋白質取下限、脂肪 25%、其餘碳水
+export const SODIUM_LIMIT = 2400; // 衛福部：成人每日鈉不宜超過 2400 mg（約鹽 6 g）
 export function macroTargets(plan) {
   if (!plan) return null;
   const protein = plan.protein[0];
   const fat = Math.round((plan.target * 0.25) / 9);
   const carbs = Math.max(0, Math.round((plan.target - protein * 4 - fat * 9) / 4));
-  return { kcal: plan.target, protein, fat, carbs };
+  // 纖維：一般建議每 1000 kcal 約 14 g，至少 25 g、最多 38 g（參考值）
+  const fiber = Math.min(38, Math.max(25, Math.round((plan.target * 14) / 1000)));
+  return { kcal: plan.target, protein, fat, carbs, fiber, sodium: SODIUM_LIMIT };
+}
+
+// 從常吃的食物挑出「蛋白質密度高、放得進剩餘熱量」的建議
+export function suggestFoods(library, proteinLeft, kcalLeft, n = 2) {
+  if (proteinLeft < 10 || kcalLeft < 100) return [];
+  return library
+    .filter((f) => num(f.perServing?.protein) >= 8 && num(f.perServing?.kcal) > 0 && num(f.perServing.kcal) <= kcalLeft)
+    .map((f) => ({ name: f.name, protein: round1(num(f.perServing.protein)), kcal: Math.round(num(f.perServing.kcal)), ratio: num(f.perServing.protein) / num(f.perServing.kcal) }))
+    .sort((a, b) => b.ratio - a.ratio)
+    .slice(0, n);
 }
 
 // 以實際平均攝取評估赤字與預估每週體重變化（負值為減少）
