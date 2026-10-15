@@ -100,7 +100,8 @@ function renderToday() {
       <div class="facts">
         <div class="fact"><span>已攝取</span><b>${int(t.kcal)}<small>kcal</small></b></div>
         <div class="fact"><span>每日目標${p.rate ? `（減 ${p.rate} kg/週）` : ''}</span><b>${int(p.target)}<small>kcal</small></b></div>
-      </div></div>`;
+      </div></div>
+      <div class="plan-line"><span>基礎代謝 <b>${int(p.bmr)}</b></span><span>消耗 <b>${int(p.tdee)}</b></span><span>赤字 <b>${int(p.deficit)}</b></span></div>`;
   } else {
     hero = `<div class="hero"><div class="ring">${ringSVG(0)}<div class="center"><span class="cap">已攝取</span><span class="big">${int(t.kcal)}</span><span class="cap">kcal</span></div></div>
       <div class="facts"><div class="fact"><span>三大營養素熱量比</span><b style="font-size:16px">蛋白 ${split.protein}%・碳水 ${split.carbs}%・脂肪 ${split.fat}%</b></div></div></div>
@@ -332,20 +333,20 @@ function renderBody() {
 function renderPlan() {
   const p = plan();
   if (!p) {
-    $('#planBody').innerHTML = `<div class="card" style="margin-top:12px"><p class="muted" style="margin:0">填入性別、年齡、身高、體重，就會算出基礎代謝率和每日熱量目標。</p></div>`;
+    const miss = [['sex', '性別'], ['age', '年齡'], ['height', '身高'], ['weight', '體重']].filter(([k]) => !db.profile[k]).map(([, n]) => n);
+    $('#planTop').innerHTML = `<div class="card" style="margin-bottom:12px"><p class="muted" style="margin:0">還差：<b style="color:var(--fg)">${miss.join('、')}</b>。填完就會自動算出基礎代謝率、每日熱量目標和減脂赤字，不用按確定。</p></div>`;
+    $('#planBody').innerHTML = '';
     return;
   }
-  const mt = C.macroTargets(p);
-  const rateTxt = p.rate ? `每週減 ${p.rate} 公斤` : '維持體重';
-  $('#planBody').innerHTML = `<h2>你的每日熱量</h2><div class="card"><div class="kpis">
-      <div class="kpi main"><span>每日目標攝取（${rateTxt}）</span><b>${int(p.target)}<small>kcal</small></b></div>
+  $('#planTop').innerHTML = `<div class="card" style="margin-bottom:12px"><div class="kpis">
+      <div class="kpi main"><span>每日目標攝取${p.rate ? `（每週減 ${p.rate} 公斤）` : '（維持體重）'}</span><b>${int(p.target)}<small>kcal</small></b></div>
       <div class="kpi"><span>基礎代謝 BMR</span><b>${int(p.bmr)}<small>kcal</small></b></div>
       <div class="kpi"><span>每日總消耗 TDEE</span><b>${int(p.tdee)}<small>kcal</small></b></div>
-      <div class="kpi"><span>每日熱量赤字</span><b>${int(p.deficit)}<small>kcal（${p.deficitPct}%）</small></b></div>
-      <div class="kpi"><span>預估每週減少</span><b>${p.weeklyKg}<small>kg</small></b></div>
-    </div>
-    ${p.floorHit ? `<p class="explain warn">⚠ 這個速度需要的赤字太大，會讓攝取低於安全下限（${int(p.target)} kcal），已自動調整。實際約每週減 ${p.weeklyKg} kg，建議改選較慢的速度或增加活動量。</p>` : ''}
-    </div>
+      <div class="kpi" style="grid-column:1/-1"><span>每日熱量赤字</span><b>${int(p.deficit)}<small>kcal（${p.deficitPct}%）・預估每週減 ${p.weeklyKg} kg</small></b></div>
+    </div><p class="explain" style="margin-top:10px">${int(p.tdee)} − ${int(p.deficit)} = ${int(p.target)} kcal${p.floorHit ? '（已調整到安全下限）' : ''}</p></div>`;
+  const mt = C.macroTargets(p);
+  const rateTxt = p.rate ? `每週減 ${p.rate} 公斤` : '維持體重';
+  $('#planBody').innerHTML = `${p.floorHit ? `<div class="card"><p class="explain warn" style="margin:0">⚠ 這個速度需要的赤字太大，會讓攝取低於安全下限（${int(p.target)} kcal），已自動調整。實際約每週減 ${p.weeklyKg} kg，建議改選較慢的速度或增加活動量。</p></div>` : ''}
     <h2>建議營養素</h2><div class="card"><div class="kpis">
       <div class="kpi"><span>蛋白質</span><b>${p.protein[0]}–${p.protein[1]}<small>g</small></b></div>
       <div class="kpi"><span>脂肪 / 碳水</span><b>${mt.fat} / ${mt.carbs}<small>g</small></b></div>
@@ -394,7 +395,7 @@ function renderStats() {
   const done = C.summarize(es.filter((e) => e.date < today), doneDates);
   const rv = C.deficitReview(done.avg.kcal, p);
   let verdict = '<p class="muted" style="margin:0">到「身體」填寫資料後，這裡會評估你實際的熱量赤字與預估體重變化。</p>';
-  if (p && !done.loggedDays) verdict = '<p class="muted" style="margin:0">今天還沒結束，不列入評估。累積至少一天完整紀錄後，這裡會算出你的平均赤字與預估體重變化。</p>';
+  if (p && !done.loggedDays) verdict = `<p class="verdict" style="margin:0">計畫赤字 <b>${int(p.deficit)} kcal/日</b>（消耗 ${int(p.tdee)} − 目標 ${int(p.target)}），預估每週減 <b>${p.weeklyKg} kg</b>。</p><p class="explain">今天還沒結束，不列入評估。累積至少一天完整紀錄後，這裡會改成用你實際吃的算出平均赤字。</p>`;
   if (rv) {
     const dir = rv.deficit > 0 ? `平均每日赤字 <b>${int(rv.deficit)} kcal</b>，預估每週<b>減少 ${Math.abs(rv.weeklyKg)} kg</b>` : `平均每日盈餘 <b>${int(-rv.deficit)} kcal</b>，預估每週<b>增加 ${Math.abs(rv.weeklyKg)} kg</b>`;
     const vs = Math.abs(rv.vsTarget) <= 100 ? '<span class="ok">和目標一致。</span>' : rv.vsTarget > 0 ? `<span class="warn">比目標多吃約 ${int(rv.vsTarget)} kcal/日。</span>` : `<span class="warn">比目標少吃約 ${int(-rv.vsTarget)} kcal/日${done.avg.kcal < p.bmr ? '，已低於基礎代謝，可能流失肌肉' : ''}。</span>`;

@@ -51,11 +51,12 @@ with sync_playwright() as p:
     pg.click('#sexSeg [data-v=male]')
     for k, v in {'#pAge':'35','#pHeight':'183','#pWeight':'80'}.items(): pg.fill(k, v)
     pg.select_option('#pActivity', 'light'); pg.click('#rateSeg [data-v="0.5"]')
-    b2 = pg.inner_text('#planBody'); assert '1,889' in b2 and '1,774' in b2 and '2,439' in b2 and '550' in b2, b2
+    b2 = pg.inner_text('#planTop'); assert '1,889' in b2 and '1,774' in b2 and '2,439' in b2 and '550' in b2 and '2,439 − 550 = 1,889' in b2, b2
+    assert pg.evaluate("document.querySelector('#planTop').getBoundingClientRect().top < document.querySelector('#profileForm').getBoundingClientRect().top")
     pg.click('nav button[data-tab=today]')
-    s2 = pg.inner_text('#summary'); assert '還可以吃' in s2 and '1,409' in s2 and '77 / 128 g' in s2, s2
+    s2 = pg.inner_text('#summary'); assert '基礎代謝' in s2 and '赤字' in s2 and '還可以吃' in s2 and '1,409' in s2 and '77 / 128 g' in s2, s2
     pg.click('nav button[data-tab=stats]')
-    v = pg.inner_text('#statsBody'); assert '今天還沒結束' in v, v
+    v = pg.inner_text('#statsBody'); assert '今天還沒結束' in v and '計畫赤字' in v and '550' in v, v
     # 重新載入後資料仍在
     pg.reload(); assert '480' in pg.inner_text('#summary')
     if os.environ.get('SHOT'): pg.screenshot(path=os.environ['SHOT'], full_page=True)

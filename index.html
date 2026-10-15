@@ -73,6 +73,9 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
 .fact b small{font-size:13px;font-weight:400;color:var(--muted);margin-left:2px}
 .cta{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border-radius:14px;background:var(--accent-soft);color:var(--accent);font-size:14px;font-weight:600;width:100%;text-align:left}
 
+.plan-line{display:flex;justify-content:space-between;margin-top:14px;padding:10px 12px;border-radius:12px;background:var(--sunk);font-size:13px;color:var(--muted)}
+.plan-line b{color:var(--fg);font-weight:600}
+
 /* 營養素條 */
 .macros{display:grid;gap:14px;margin-top:4px}
 .macro .top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px}
@@ -220,6 +223,7 @@ a{color:var(--accent)}
   <!-- 身體 -->
   <section id="body" class="tab" hidden>
     <h1>身體與目標</h1>
+    <div id="planTop"></div>
     <div class="card form" id="profileForm">
       <label>生理性別<div class="seg" id="sexSeg"><button data-v="male">男</button><button data-v="female">女</button></div></label>
       <div class="grid3">
