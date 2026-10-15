@@ -22,6 +22,15 @@ with sync_playwright() as p:
     assert '330 kcal' in pg.inner_text('.sum')
     pg.click('#saveItems')
     t = pg.inner_text('#summary'); assert '330' in t and '62' in t, t
+    # 標記「這天沒記完整」：可切換、會存進資料、再按取消
+    assert '這天沒記完整？' in pg.inner_text('#entries')
+    pg.click('#toggleIncomplete')
+    assert '已標記為沒記完整' in pg.inner_text('#entries')
+    days = json.loads(pg.evaluate("localStorage.getItem('nl.v1')"))['incompleteDays']
+    assert len(days) == 1, days
+    pg.click('#toggleIncomplete')
+    assert '這天沒記完整？' in pg.inner_text('#entries')
+    assert json.loads(pg.evaluate("localStorage.getItem('nl.v1')"))['incompleteDays'] == []
     # 拍照（模擬）：未設 Key 應導到設定
     pg.click('nav button[data-tab=add]')
     pg.set_input_files('#lib', os.path.join(ROOT, 'icons/icon-192.png'))

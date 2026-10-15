@@ -115,15 +115,17 @@ export function defaultMeal(date) {
   return '點心';
 }
 
-export function summarize(entries, dates) {
+// skip：使用者標記「沒記完整」的日期，不列入已記錄天數與平均（逐日資料仍保留供圖表使用）
+export function summarize(entries, dates, skip = []) {
+  const skipSet = new Set(skip);
   const perDay = dates.map((date) => {
     const es = entries.filter((e) => e.date === date);
-    return { date, n: es.length, ...sumEntries(es) };
+    return { date, n: es.length, skip: skipSet.has(date) && es.length > 0, ...sumEntries(es) };
   });
-  const logged = perDay.filter((p) => p.n > 0);
+  const logged = perDay.filter((p) => p.n > 0 && !p.skip);
   const avg = {};
   for (const k of KEYS) avg[k] = logged.length ? round1(logged.reduce((s, p) => s + p[k], 0) / logged.length) : 0;
-  return { perDay, loggedDays: logged.length, avg };
+  return { perDay, loggedDays: logged.length, skipped: perDay.filter((p) => p.skip).length, avg };
 }
 
 export function topContributors(entries, key, n = 5) {
@@ -275,7 +277,7 @@ export function slopePerDay(points) {
 }
 
 // 以「實際攝取」與「體重趨勢變化」反推真實 TDEE：TDEE ＝ 平均攝取 − 每日體重變化 × 7700
-export function calibrateTDEE({ weights, entries, today, windowDays = 28, minWeights = 5, minSpan = 10, minFullDays = 7, minKcal = 800 }) {
+export function calibrateTDEE({ weights, entries, today, windowDays = 28, minWeights = 5, minSpan = 10, minFullDays = 7, minKcal = 800, skipDates = [] }) {
   const from = dayNum(today) - windowDays + 1;
   const ws = (weights || []).filter((w) => dayNum(w.date) >= from && dayNum(w.date) <= dayNum(today));
   if (ws.length < minWeights) return { ok: false, reason: `體重紀錄不足（${ws.length}/${minWeights} 筆）` };
@@ -283,9 +285,10 @@ export function calibrateTDEE({ weights, entries, today, windowDays = 28, minWei
   const span = last - first + 1;
   if (span < minSpan) return { ok: false, reason: `體重紀錄涵蓋不到 ${minSpan} 天（目前 ${span} 天）` };
   const perDay = new Map();
+  const skip = new Set(skipDates);
   for (const e of entries) {
     const d = dayNum(e.date);
-    if (d >= first && d <= last && e.date < today) perDay.set(e.date, (perDay.get(e.date) || 0) + num(e.nutrients?.kcal));
+    if (d >= first && d <= last && e.date < today && !skip.has(e.date)) perDay.set(e.date, (perDay.get(e.date) || 0) + num(e.nutrients?.kcal));
   }
   const full = [...perDay.values()].filter((k) => k >= minKcal);
   if (full.length < minFullDays || full.length < span * 0.6) return { ok: false, reason: `飲食紀錄不足（完整紀錄 ${full.length}/${span} 天，至少 ${minFullDays} 天且 60%）` };
@@ -307,4 +310,10 @@ export function mergeWeights(existing, incoming) {
   const have = new Set(out.map((w) => w.date));
   for (const w of incoming || []) if (w && w.date && !have.has(w.date) && num(w.kg) > 20) { out.push({ date: w.date, kg: round1(num(w.kg)) }); added++; }
   return { merged: out.sort((a, b) => a.date.localeCompare(b.date)), added };
+}
+
+// 切換某天「沒記完整」標記（回傳新陣列，不修改原陣列）
+export function toggleIncompleteDay(days, date) {
+  const list = days || [];
+  return list.includes(date) ? list.filter((d) => d !== date) : [...list, date].sort();
 }

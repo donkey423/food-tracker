@@ -22,7 +22,7 @@ python3 tests/e2e_retry.py
 ## 部署與流程
 - repo：`donkey423/food-tracker`，直接推 `main`（使用者偏好，不開分支）；Vercel 自動部署，網址 https://food-tracker-three-omega.vercel.app/
 - git 作者：`Brad Lin <t7522462@gmail.com>`；commit 結尾附 Co-Authored-By 與 Claude-Session 行。
-- 每次改動快取內容都要升 `sw.js` 的 `CACHE`（目前 v8）。
+- 每次改動快取內容都要升 `sw.js` 的 `CACHE`（目前 v9）。
 - **使用者說「把修改推上去」時，自動完成整套，不用再問**：①跑全部測試 ②更新 STATUS.md（版本、改動、測試結果、未驗證項）與 HANDOFF.md（資料格式變更、驗證指令、下一步）③若改到網頁檔案則升 `sw.js` 的 `CACHE` ④commit 並直接推 `main`。
 
 ## 下一步（建議順序）
@@ -35,3 +35,8 @@ python3 tests/e2e_retry.py
 - localStorage `nl.v1` 新增 `weights: [{date:'YYYY-MM-DD', kg}]`（每日一筆）；`profile.tdeeOverride`（可選，採用實測消耗時存在）。
 - 匯出 JSON version 3 含 weights；匯入依日期合併、不覆蓋既有。
 - 驗證：`node --test tests/*.mjs`；`python3 tests/e2e.py`、`e2e_retry.py`、`e2e_new.py`。
+
+## 資料格式更新（v0.8）
+- localStorage `nl.v1` 新增 `incompleteDays: ['YYYY-MM-DD']`（使用者標記「沒記完整」的日期，已排序）。舊資料沒有此欄位時 `load()` 預設為空陣列。
+- 匯出 JSON 含 `incompleteDays`；匯入與既有合併取聯集。
+- 邏輯：`core.js` 的 `summarize(entries, dates, skip)` 與 `calibrateTDEE({..., skipDates})` 排除標記日；`toggleIncompleteDay` 為切換用純函式。

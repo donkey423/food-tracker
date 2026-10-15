@@ -87,3 +87,22 @@ test('mergeWeights 不覆蓋既有日期', () => {
   assert.equal(r.added, 1);
   assert.deepEqual(r.merged.map((w) => w.kg), [80, 79.5]);
 });
+
+test('標記「沒記完整」的日子（即使 ≥800 kcal）不列入校正的平均攝取', () => {
+  const { weights, entries } = synth(21);
+  const d = C.addDays(TODAY, -3);
+  entries.find((e) => e.date === d).nutrients.kcal = 1000; // 漏記一餐，但仍超過 800 的門檻
+  assert.notEqual(C.calibrateTDEE({ weights, entries, today: TODAY }).avgIntake, 2000);
+  const r = C.calibrateTDEE({ weights, entries, today: TODAY, skipDates: [d] });
+  assert.equal(r.avgIntake, 2000);
+  assert.equal(r.fullDays, 20);
+});
+
+test('toggleIncompleteDay 加入、取消、不改動原陣列', () => {
+  const a = ['2026-10-10'];
+  const b = C.toggleIncompleteDay(a, '2026-10-05');
+  assert.deepEqual(b, ['2026-10-05', '2026-10-10']);
+  assert.deepEqual(a, ['2026-10-10']);
+  assert.deepEqual(C.toggleIncompleteDay(b, '2026-10-05'), ['2026-10-10']);
+  assert.deepEqual(C.toggleIncompleteDay(undefined, '2026-10-05'), ['2026-10-05']);
+});

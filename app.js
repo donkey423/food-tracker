@@ -29,12 +29,12 @@ let range = 7;
 const noThinking = new Set();
 
 function load() {
-  const base = { entries: [], weights: [], favorites: [], profile: { activity: 'light', rate: 0.5 }, settings: { apiKey: '', model: '', speed: 'balanced', lastBackup: '' } };
+  const base = { entries: [], weights: [], favorites: [], incompleteDays: [], profile: { activity: 'light', rate: 0.5 }, settings: { apiKey: '', model: '', speed: 'balanced', lastBackup: '' } };
   try {
     const d = JSON.parse(localStorage.getItem(LS) || '{}');
     const settings = { ...base.settings, ...(d.settings || {}) };
     if (settings.model === 'gemini-flash-latest') settings.model = ''; // 舊版預設值改為自動
-    return { entries: d.entries || [], weights: d.weights || [], favorites: d.favorites || [], profile: { ...base.profile, ...(d.profile || {}) }, settings };
+    return { entries: d.entries || [], weights: d.weights || [], favorites: d.favorites || [], incompleteDays: d.incompleteDays || [], profile: { ...base.profile, ...(d.profile || {}) }, settings };
   } catch {
     return base;
   }
@@ -144,6 +144,10 @@ function renderToday() {
         return `<h2>${meal}<small>${int(C.sumEntries(es).kcal)} kcal</small></h2><div class="card meal" style="padding:0">${es.map(entryRow).join('')}</div>`;
       }).join('')
     : `<div class="empty">這天還沒有紀錄<br><button class="btn primary" style="margin-top:12px" id="emptyAdd">＋ 新增第一筆</button></div>`;
+  if (list.length) {
+    const inc = db.incompleteDays.includes(curDate);
+    $('#entries').innerHTML += `<div style="margin-top:14px"><button type="button" class="chip" id="toggleIncomplete" aria-pressed="${inc}">${inc ? '✓ 這天已標記為沒記完整' : '這天沒記完整？'}</button><p class="explain" style="margin:6px 0 0">${inc ? '這天不列入平均攝取、赤字評估與消耗校正。再按一次可取消。' : '漏記了餐點的話，標記後這天不會拉低平均、扭曲消耗校正。'}</p></div>`;
+  }
   const last = db.settings.lastBackup;
   $('#backupHint').hidden = !(db.entries.length >= 10 && (!last || (Date.now() - new Date(last)) / 864e5 > 7));
 }
@@ -455,7 +459,7 @@ function renderWeightPanel() {
   }
   const p = plan();
   const today = C.localDateStr(new Date());
-  const cal = C.calibrateTDEE({ weights: db.weights, entries: db.entries, today });
+  const cal = C.calibrateTDEE({ weights: db.weights, entries: db.entries, today, skipDates: db.incompleteDays });
   const last = tr[tr.length - 1];
   let calHtml;
   if (!cal.ok) calHtml = `<p class="explain" style="margin:10px 0 0">消耗校正還不能算：${esc(cal.reason)}。</p>`;
@@ -524,16 +528,16 @@ function renderStats() {
   seg($('#rangeSeg'), range);
   const dates = C.lastNDates(C.localDateStr(new Date()), range);
   const es = db.entries.filter((e) => dates.includes(e.date));
-  const s = C.summarize(es, dates);
+  const s = C.summarize(es, dates, db.incompleteDays);
   if (!s.loggedDays) {
-    $('#statsBody').innerHTML = '<div class="empty">這段期間沒有紀錄</div>';
+    $('#statsBody').innerHTML = `<div class="empty">${s.skipped ? '這段期間的紀錄都標記為沒記完整，沒有可統計的日子' : '這段期間沒有紀錄'}</div>`;
     return;
   }
   const p = plan();
   // 今天尚未結束，評估只用已完成的日子，避免高估赤字
   const today = C.localDateStr(new Date());
   const doneDates = dates.filter((d) => d < today);
-  const done = C.summarize(es.filter((e) => e.date < today), doneDates);
+  const done = C.summarize(es.filter((e) => e.date < today), doneDates, db.incompleteDays);
   const rv = C.deficitReview(done.avg.kcal, p);
   let verdict = '<p class="muted" style="margin:0">到「身體」填寫資料後，這裡會評估你實際的熱量赤字與預估體重變化。</p>';
   if (p && !done.loggedDays) verdict = `<p class="verdict" style="margin:0">計畫赤字 <b>${int(p.deficit)} kcal/日</b>（消耗 ${int(p.tdee)} − 目標 ${int(p.target)}），預估每週減 <b>${p.weeklyKg} kg</b>。</p><p class="explain">今天還沒結束，不列入評估。累積至少一天完整紀錄後，這裡會改成用你實際吃的算出平均赤字。</p>`;
@@ -545,7 +549,7 @@ function renderStats() {
   const keys = ['kcal', 'protein', 'carbs', 'fat'];
   const top = C.topContributors(es, 'kcal', 6);
   $('#statsBody').innerHTML = `
-    <h2>熱量赤字評估 <small>${s.loggedDays}/${range} 天有紀錄</small></h2><div class="card">${verdict}</div>
+    <h2>熱量赤字評估 <small>${s.loggedDays}/${range} 天有紀錄${s.skipped ? `・排除 ${s.skipped} 天` : ''}</small></h2><div class="card">${verdict}</div>
     <h2>每日熱量</h2><div class="card">${chartSVG(s.perDay, p?.target)}</div>
     <h2>每日平均</h2><div class="card"><div class="kpis">${keys.map((k) => { const n = C.NUTRIENTS.find((x) => x.k === k); return `<div class="kpi"><span>${n.label}</span><b>${k === 'kcal' ? int(s.avg[k]) : fmt(s.avg[k])}<small>${n.unit}</small></b></div>`; }).join('')}</div>
       <p class="explain">纖維 ${fmt(s.avg.fiber)} g・鈉 ${int(s.avg.sodium)} mg・平均只計有紀錄的日子</p></div>
@@ -588,6 +592,10 @@ function bind() {
     const del = e.target.closest('[data-del]');
     const fav = e.target.closest('[data-fav]');
     if (e.target.closest('#emptyAdd')) return show('add');
+    if (e.target.closest('#toggleIncomplete')) {
+      db.incompleteDays = C.toggleIncompleteDay(db.incompleteDays, curDate);
+      save(); return renderToday();
+    }
     if (del && confirm('刪除這筆紀錄？')) {
       db.entries = db.entries.filter((x) => x.id !== del.dataset.del);
       save(); renderToday();
@@ -670,7 +678,7 @@ function bind() {
     save(); toast('已儲存設定');
   };
   $('#exportJson').onclick = async () => {
-    const data = { app: 'food-log', version: 3, exportedAt: new Date().toISOString(), entries: db.entries, weights: db.weights, favorites: db.favorites, profile: db.profile };
+    const data = { app: 'food-log', version: 3, exportedAt: new Date().toISOString(), entries: db.entries, weights: db.weights, favorites: db.favorites, incompleteDays: db.incompleteDays, profile: db.profile };
     if (await shareOrDownload(`營養記錄備份-${C.localDateStr(new Date())}.json`, JSON.stringify(data), 'application/json')) {
       db.settings.lastBackup = new Date().toISOString(); save(); renderSettings();
     }
@@ -687,6 +695,7 @@ function bind() {
       const wr = C.mergeWeights(db.weights, d.weights);
       db.weights = wr.merged;
       db.favorites = [...new Set([...db.favorites, ...(d.favorites || [])])];
+      db.incompleteDays = [...new Set([...db.incompleteDays, ...(d.incompleteDays || [])])].sort();
       if (d.profile && !C.calcBMR(db.profile)) db.profile = { ...db.profile, ...d.profile };
       save(); renderSettings(); toast(`已匯入 ${r.added} 筆${wr.added ? `、體重 ${wr.added} 筆` : ''}`);
     } catch { toast('檔案格式錯誤，無法匯入'); }

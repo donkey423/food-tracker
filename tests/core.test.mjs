@@ -105,3 +105,16 @@ test('toCSV 跳脫逗號與引號', () => {
   assert.ok(csv.startsWith('\uFEFF日期'));
   assert.ok(csv.includes('"蛋餅, ""加蛋"""'));
 });
+
+test('summarize 排除標記為沒記完整的日子，但逐日資料仍保留', () => {
+  const es = [
+    { date: '2026-10-01', nutrients: { kcal: 2000 } },
+    { date: '2026-10-03', nutrients: { kcal: 1000 } },
+  ];
+  const s = C.summarize(es, ['2026-10-01', '2026-10-02', '2026-10-03'], ['2026-10-03', '2026-10-02']);
+  assert.equal(s.loggedDays, 1);
+  assert.equal(s.avg.kcal, 2000);
+  assert.equal(s.skipped, 1); // 10-02 沒有紀錄，不算「被排除」
+  assert.equal(s.perDay[2].skip, true);
+  assert.equal(s.perDay[2].kcal, 1000);
+});
