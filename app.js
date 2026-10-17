@@ -224,13 +224,15 @@ function itemCard(it, i, meta) {
     ? `<div class="conf ${it.confidence === 'high' ? 'ok' : 'warn'}">可信度${confLabel(it.confidence)}${it.kcalRange ? `・熱量約 ${it.kcalRange[0]}–${it.kcalRange[1]} kcal` : ''}</div>` : '';
   const chips = [0.5, 1, 1.5, 2, ...(meta.servingsPerPackage && ![0.5, 1, 1.5, 2].includes(meta.servingsPerPackage) ? [meta.servingsPerPackage] : [])]
     .map((v) => `<button type="button" class="chip" data-sv="${v}">${v === meta.servingsPerPackage ? `整包 ${v}` : v} 份</button>`).join('');
-  return `<fieldset class="card edit" data-i="${i}">
+  const sv = C.num(it.servings ?? 1);
+  const per = C.normalizeNutrients(it.nutrients);
+  return `<fieldset class="card edit" data-i="${i}" data-per='${JSON.stringify(per)}'>
     <div class="head"><input class="name grow" data-f="name" value="${esc(it.name)}" placeholder="食物名稱"><label class="check-inc"><input type="checkbox" data-f="include" checked>加入</label></div>
     ${conf}${it.portion ? `<div class="small muted">${meta.type === 'food' ? '估計份量' : '每份'}：${esc(it.portion)}</div>` : ''}
     <div class="row wrap"><div class="stepper"><button type="button" data-step="-0.5" aria-label="減少">−</button><input type="number" inputmode="decimal" step="0.1" min="0" data-f="servings" value="${it.servings ?? 1}" aria-label="份數"><button type="button" data-step="0.5" aria-label="增加">+</button></div><span class="muted small">份</span></div>
     <div class="chips">${chips}</div>
-    <div class="nut">${C.NUTRIENTS.map((n) => `<label>${n.label}（${n.unit}）<input type="number" inputmode="decimal" step="any" min="0" data-f="${n.k}" value="${it.nutrients[n.k]}"></label>`).join('')}</div>
-    <div class="small muted" style="margin-top:-4px">${meta.type === 'food' ? '以上為 AI 估算的整份數值，份數 1 ＝ 照片中這一份' : '以上為「每份」數值'}</div>
+    <div class="nut">${C.NUTRIENTS.map((n) => `<label>${n.label}（${n.unit}）<input type="number" inputmode="decimal" step="any" min="0" data-f="${n.k}" value="${C.round1(per[n.k] * sv)}"></label>`).join('')}</div>
+    <div class="small muted" style="margin-top:-4px">${meta.type === 'food' ? '份數 1 ＝ 照片中這一份。' : '標示數值為「每份」。'}上方營養素為「份數 × 每份」的合計，改份數會自動換算，直接改數字則換算回每份。</div>
     <div class="sum"></div>
   </fieldset>`;
 }
@@ -257,10 +259,23 @@ function closeEditor() {
 function readCards() {
   return $$('#cards fieldset').map((fs) => {
     const g = (f) => fs.querySelector(`[data-f="${f}"]`);
-    const per = {};
-    for (const k of C.KEYS) per[k] = g(k).value;
-    return { include: g('include').checked, name: g('name').value.trim(), servings: C.num(g('servings').value), perServing: C.normalizeNutrients(per), i: +fs.dataset.i };
+    return { include: g('include').checked, name: g('name').value.trim(), servings: C.num(g('servings').value), perServing: C.normalizeNutrients(JSON.parse(fs.dataset.per)), i: +fs.dataset.i };
   });
+}
+// 欄位顯示「合計」；每份數值存在 fieldset.dataset.per，份數改變時由它重算欄位
+function showTotals(fs) {
+  const sv = C.num(fs.querySelector('[data-f="servings"]').value);
+  if (!(sv > 0)) return;
+  const per = JSON.parse(fs.dataset.per);
+  for (const k of C.KEYS) fs.querySelector(`[data-f="${k}"]`).value = C.round1(per[k] * sv);
+}
+function onCardInput(fs, f) {
+  if (f === 'servings') return showTotals(fs);
+  if (!C.KEYS.includes(f)) return;
+  const sv = C.num(fs.querySelector('[data-f="servings"]').value);
+  const per = JSON.parse(fs.dataset.per);
+  per[f] = C.num(fs.querySelector(`[data-f="${f}"]`).value) / (sv > 0 ? sv : 1);
+  fs.dataset.per = JSON.stringify(per);
 }
 function updateChecks() {
   readCards().forEach((c) => {
@@ -643,7 +658,11 @@ function bind() {
   };
 
   const ed = $('#editor');
-  ed.addEventListener('input', updateChecks);
+  ed.addEventListener('input', (e) => {
+    const fs = e.target.closest('fieldset'), f = e.target.dataset?.f;
+    if (fs && f) onCardInput(fs, f);
+    updateChecks();
+  });
   ed.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
@@ -660,6 +679,7 @@ function bind() {
     } else if (t.dataset.step || t.dataset.sv) {
       const inp = t.closest('fieldset').querySelector('[data-f="servings"]');
       inp.value = t.dataset.sv ? t.dataset.sv : Math.max(0.5, C.round1(C.num(inp.value) + +t.dataset.step));
+      showTotals(t.closest('fieldset'));
       updateChecks();
     }
   });

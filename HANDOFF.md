@@ -13,6 +13,7 @@
 node --test tests/*.mjs
 python3 tests/e2e.py
 python3 tests/e2e_retry.py
+python3 tests/e2e_new.py
 ```
 
 ## 已知限制
@@ -22,7 +23,7 @@ python3 tests/e2e_retry.py
 ## 部署與流程
 - repo：`donkey423/food-tracker`，直接推 `main`（使用者偏好，不開分支）；Vercel 自動部署，網址 https://food-tracker-three-omega.vercel.app/
 - git 作者：`Brad Lin <t7522462@gmail.com>`；commit 結尾附 Co-Authored-By 與 Claude-Session 行。
-- 每次改動快取內容都要升 `sw.js` 的 `CACHE`（目前 v9）。
+- 每次改動快取內容都要升 `sw.js` 的 `CACHE`（目前 v10）。
 - **使用者說「把修改推上去」時，自動完成整套，不用再問**：①跑全部測試 ②更新 STATUS.md（版本、改動、測試結果、未驗證項）與 HANDOFF.md（資料格式變更、驗證指令、下一步）③若改到網頁檔案則升 `sw.js` 的 `CACHE` ④commit 並直接推 `main`。
 
 ## 下一步（建議順序）
@@ -35,6 +36,11 @@ python3 tests/e2e_retry.py
 - localStorage `nl.v1` 新增 `weights: [{date:'YYYY-MM-DD', kg}]`（每日一筆）；`profile.tdeeOverride`（可選，採用實測消耗時存在）。
 - 匯出 JSON version 3 含 weights；匯入依日期合併、不覆蓋既有。
 - 驗證：`node --test tests/*.mjs`；`python3 tests/e2e.py`、`e2e_retry.py`、`e2e_new.py`。
+
+## 編輯畫面行為（v0.9，資料格式不變）
+- 編輯卡片的營養素欄位顯示「份數 × 每份」的合計；每份數值（真正的資料來源）放在 `fieldset.dataset.per`（JSON），`readCards()` 由它讀出 `perServing`。
+- `app.js`：`showTotals(fs)` 依 `per` 與份數重算欄位（份數 ≤0 時不動）；`onCardInput(fs, f)` 處理輸入：改份數 → `showTotals`，改營養素 → 除以目前份數寫回 `per`。份數 ± 與快選鈕也會呼叫 `showTotals`。
+- 改動編輯卡片時請維持「儲存的是每份、`nutrients` ＝ 每份 × 份數」；`tests/e2e.py` 手動新增段落是此行為的回歸測試。
 
 ## 資料格式更新（v0.8）
 - localStorage `nl.v1` 新增 `incompleteDays: ['YYYY-MM-DD']`（使用者標記「沒記完整」的日期，已排序）。舊資料沒有此欄位時 `load()` 預設為空陣列。

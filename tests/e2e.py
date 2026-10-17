@@ -17,9 +17,15 @@ with sync_playwright() as p:
     assert '還沒有紀錄' in pg.inner_text('#entries')
     # 手動新增
     pg.click('nav button[data-tab=add]'); pg.click('#manual')
-    pg.fill('[data-f=name]', '雞胸肉'); pg.fill('[data-f=servings]', '2')
+    pg.fill('[data-f=name]', '雞胸肉')
     for k, v in {'kcal':165,'protein':31,'fat':3.6,'carbs':0}.items(): pg.fill(f'[data-f={k}]', str(v))
+    pg.fill('[data-f=servings]', '2')
+    assert pg.input_value('[data-f=kcal]') == '330' and pg.input_value('[data-f=protein]') == '62'
     assert '330 kcal' in pg.inner_text('.sum')
+    pg.click('[data-sv="0.5"]')
+    assert pg.input_value('[data-f=kcal]') == '82.5' and pg.input_value('[data-f=servings]') == '0.5'
+    pg.click('[data-sv="2"]')
+    assert pg.input_value('[data-f=kcal]') == '330' and '330 kcal' in pg.inner_text('.sum')
     pg.click('#saveItems')
     t = pg.inner_text('#summary'); assert '330' in t and '62' in t, t
     # 標記「這天沒記完整」：可切換、會存進資料、再按取消
