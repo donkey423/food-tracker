@@ -27,6 +27,7 @@ python3 tests/e2e_new.py
 - **使用者說「把修改推上去」時，自動完成整套，不用再問**：①跑全部測試 ②更新 STATUS.md（版本、改動、測試結果、未驗證項）與 HANDOFF.md（資料格式變更、驗證指令、下一步）③若改到網頁檔案則升 `sw.js` 的 `CACHE` ④commit 並直接推 `main`。
 
 ## 下一步（建議順序）
+0. 修 `e2e_new.py`「複製昨天的午餐」失敗：切換餐別分段後檢查快速區（`#qa`）是否以新餐別重繪；修好後在非午餐時段重跑確認不依賴時間。
 1. 用已存食物比對辨識結果，並提供份量快選（提高拍照準確度）
 2. 衛福部食品營養成分資料庫離線搜尋（先確認資料可否取得）
 3. 備份提醒強化
@@ -46,3 +47,7 @@ python3 tests/e2e_new.py
 - localStorage `nl.v1` 新增 `incompleteDays: ['YYYY-MM-DD']`（使用者標記「沒記完整」的日期，已排序）。舊資料沒有此欄位時 `load()` 預設為空陣列。
 - 匯出 JSON 含 `incompleteDays`；匯入與既有合併取聯集。
 - 邏輯：`core.js` 的 `summarize(entries, dates, skip)` 與 `calibrateTDEE({..., skipDates})` 排除標記日；`toggleIncompleteDay` 為切換用純函式。
+
+## Repo 公開（2026-10-31）
+- 新增 MIT `LICENSE`，README 加英文摘要與線上版網址，repo 改為公開。
+- 公開 repo 注意：不要把 API Key、個人飲食／體重資料或備份 JSON commit 進來；測試一律用合成資料。
